@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tripartite.dev/schemas/northstar/requirement.json",
+  "title": "NorthstarRequirement",
+  "description": "Schema for functional and non-functional requirements in Northstar",
+  "type": "object",
+  "required": ["uri", "title", "domain", "status", "provenance"],
+  "properties": {
+    "uri": {
+      "type": "string",
+      "pattern": "^req://[a-z0-9_/-]+/[a-z0-9_-]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["DRAFT", "PROPOSED", "ACTIVE", "DEPRECATED", "SUPERSEDED"],
+      "default": "DRAFT"
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["tier", "confidence"],
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": ["DECLARED", "DERIVED", "INFERRED"]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "author": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "governed_by": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^decision://" }
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^constraint://" }
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}
+

@@ -1,0 +1,55 @@
+[project]
+name = "northstar-intent"
+version = "0.1.0"
+description = "The Intent, Requirements, and Governance Authority for the Tripartite Semantic Federation"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Larry Dawson", email = "larry.dawson@gmail.com" },
+]
+license = { text = "Apache-2.0" }
+keywords = ["intent", "requirements", "adr", "governance", "invariants", "tripartite", "codemesh", "groundtruth"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pyyaml>=6.0",
+    "jsonschema>=4.20.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/dawsonlp/northstar"
+Repository = "https://github.com/dawsonlp/northstar"
+Documentation = "https://github.com/dawsonlp/northstar/blob/main/docs/README.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "mypy>=1.8.0",
+    "ruff>=0.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/northstar"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
