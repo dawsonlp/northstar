@@ -251,3 +251,4 @@ class QualitySpec:
 ## 3. Entity JSON Serialization Standard
 
 All Northstar entities provide lossless JSON round-tripping via `.to_dict()` and `.from_dict()`, conforming to the schemas in `schemas/`.
+

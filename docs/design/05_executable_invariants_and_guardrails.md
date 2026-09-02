@@ -113,3 +113,4 @@ Northstar hooks directly into CodeMesh's **`Workspace.edit_symbol()`** pipeline:
 2. **Invariant Gate**: Northstar's `InvariantEngine.validate_code()` executes all bound validators against the proposed AST.
 3. **If Validations Pass**: CodeMesh applies the semantic mutation to the graph and projects to disk.
 4. **If Validations Fail**: CodeMesh rejects the edit and immediately returns Northstar's `ConstraintViolation` diagnostics (including `remediation_hint`) to the AI agent for instant automated repair.
+

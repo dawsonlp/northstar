@@ -107,3 +107,4 @@ $$\mathcal{G}_{\text{comp}} = (V_{\text{comp}}, E_{\text{deps}})$$
 
 * **Acyclic Subgraph Enforcement**: Flags circular component dependencies ($A \to B \to A$) and recommends refactoring into event-driven choreography or shared kernel services.
 * **Blast Radius Analysis**: When a component updates an exported capability contract, Northstar traces all downstream dependent components to trigger automated regression checks.
+

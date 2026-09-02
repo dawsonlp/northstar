@@ -116,3 +116,4 @@ From a `WorkflowSpec`, CodeMesh synthesizes:
 From a `WorkflowSpec`, GroundTruth synthesizes:
 1. **Transactional Outbox Tables**: `data://physical/postgres/public/outbox_events` to guarantee reliable event dispatch across steps.
 2. **Saga State Machine**: Tracks workflow instance states (`STARTED`, `STEP_1_COMPLETED`, `COMPENSATING`, `COMPENSATED`, `COMPLETED`).
+

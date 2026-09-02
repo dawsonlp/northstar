@@ -108,3 +108,4 @@ The resolved `IntentClosure` formats high-density, token-optimized Markdown for 
 - ⚠️ **Architectural Boundary Rule** (`constraint://payments/no-direct-db-import`)
   - *Remediation*: Domain services must use `PaymentRepository` interface; direct SQL/ORM driver imports are forbidden.
 ```
+
