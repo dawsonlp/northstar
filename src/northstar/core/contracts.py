@@ -67,11 +67,12 @@ class StateTransition:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "StateTransition":
         return cls(
-            entity=data["entity"],
-            attribute=data["attribute"],
-            from_state=data["from_state"],
-            to_state=data["to_state"],
+            entity=data.get("entity", ""),
+            attribute=data.get("attribute", "status"),
+            from_state=str(data.get("from_state", "")),
+            to_state=str(data.get("to_state", "")),
         )
+
 
 
 @dataclass

@@ -1,0 +1,22 @@
+uri: req://codemesh/get-slice
+title: Extract Multi-Hop Context Slice
+intent: Traverses relational program multigraph to extract caller and callee contracts for LLM prompt context injection.
+domain: codemesh
+component: graph
+lifecycle: ACTIVE
+contract:
+  preconditions:
+    - description: Target symbol URI must exist in the indexed graph.
+  postconditions:
+    - description: Cohesive Markdown context bundle produced containing contracts and invariants.
+  state_transitions: []
+failure_modes:
+  - error_name: SymbolNotFoundError
+    trigger_condition: Target CSI URI is not found in the indexed repository.
+    recovery_action: Trigger full workspace re-indexing.
+operated_entities:
+  reads:
+    - data://logical/codemesh/CodeSymbol
+    - data://logical/codemesh/CodeDependencyEdge
+  creates: []
+  mutates: []

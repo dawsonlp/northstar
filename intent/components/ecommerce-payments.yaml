@@ -1,0 +1,18 @@
+uri: component://ecommerce/payments
+name: Payments Processing Component
+domain: ecommerce
+lifecycle: ACTIVE
+exported_capabilities:
+  - req://ecommerce/charge-card
+  - req://ecommerce/refund-payment
+internal_capabilities: []
+owned_data_domains:
+  - data://logical/ecommerce/Payment
+owned_code_namespaces:
+  - ecommerce.services.payment
+boundary_invariants:
+  - constraint://ecommerce/idempotent-payment
+governing_policies: []
+tags:
+  - ecommerce
+  - financial

@@ -1,0 +1,22 @@
+uri: req://codemesh/index-symbol
+title: Index Canonical Symbol
+intent: Parses Python AST and LSP type definitions to record symbol signatures and call graph edges.
+domain: codemesh
+component: graph
+lifecycle: ACTIVE
+contract:
+  preconditions:
+    - description: Valid source code file must exist on disk.
+  postconditions:
+    - description: CodeSymbol and SymbolContract records indexed in program graph.
+  state_transitions: []
+failure_modes:
+  - error_name: SyntaxParseError
+    trigger_condition: Python source file contains invalid AST syntax.
+    recovery_action: Report syntax error with line and column numbers.
+operated_entities:
+  reads: []
+  creates:
+    - data://logical/codemesh/CodeSymbol
+    - data://logical/codemesh/SymbolContract
+  mutates: []

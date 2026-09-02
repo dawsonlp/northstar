@@ -1,0 +1,30 @@
+uri: req://ecommerce/charge-card
+title: Charge Payment Instrument Idempotently
+intent: Authorizes and captures funds for an active order using a unique idempotency key.
+domain: ecommerce
+component: payments
+lifecycle: ACTIVE
+contract:
+  preconditions:
+    - description: Order must exist in PENDING state.
+    - description: Unique idempotency key must be provided.
+  postconditions:
+    - description: Payment record created in CAPTURED state and Order transitioned to PAID.
+  state_transitions:
+    - from_state: PENDING
+      to_state: PAID
+      trigger: Successful Payment Capture
+failure_modes:
+  - error_name: DuplicateIdempotencyKeyError
+    trigger_condition: Payment was already captured with this idempotency key.
+    recovery_action: Return cached successful payment response without duplicate charge.
+  - error_name: InsufficientFundsError
+    trigger_condition: Payment processor declined card.
+    recovery_action: Transition Payment to FAILED and prompt customer for alternate payment method.
+operated_entities:
+  reads:
+    - data://logical/ecommerce/Order
+  creates:
+    - data://logical/ecommerce/Payment
+  mutates:
+    - data://logical/ecommerce/Order.status

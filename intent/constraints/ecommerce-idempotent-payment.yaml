@@ -1,0 +1,9 @@
+uri: constraint://ecommerce/idempotent-payment
+title: Strict Payment Idempotency Guardrail
+rule_type: ARCHITECTURAL_BOUNDARY
+description: Payment charge operations must require a unique idempotency key and must never process double charges for identical keys.
+target_scope: csi://ecommerce/services/PaymentService.capture_funds*
+executable_expression: ""
+remediation_hint: Include idempotency_key header in payment capture payload and check PostgreSQL unique constraint on ecommerce.payment.
+governing_adr: decision://arch/adr-0002-three-tier-decomposition-data-domain-first-capability-api-and-zero-logic-presentation
+status: ACTIVE
