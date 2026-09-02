@@ -213,11 +213,30 @@ def resolve_solution_bundles(catalog: NorthstarCatalog) -> Dict[str, Dict[str, A
 
         mermaid_graph = "\n".join(mermaid_lines)
 
+        # Enrich components with matched capabilities
+        comp_dicts = []
+        for c in comps:
+            c_dict = c.to_dict()
+            c_short = c.uri.split("/")[-1].lower()
+            c_name = c.name.lower()
+            c_caps = [
+                cap.to_dict() for cap in caps
+                if (
+                    cap.uri in c.exported_capabilities or
+                    cap.uri in c.internal_capabilities or
+                    (cap.component and cap.component.lower() in (c_short, c_name)) or
+                    (c.domain == cap.domain and c_short in cap.uri.lower()) or
+                    (c_short in cap.uri.lower() and cap.domain in (c.domain, c_short))
+                )
+            ]
+            c_dict["capabilities"] = c_caps
+            comp_dicts.append(c_dict)
+
         bundles[sol_key] = {
             "solution_name": sol_key,
             "display_name": sol_meta["display_name"],
             "description": sol_meta["description"],
-            "components": [c.to_dict() for c in comps],
+            "components": comp_dicts,
             "capabilities": [c.to_dict() for c in caps],
             "decisions": [d.to_dict() for d in decs],
             "invariants": [i.to_dict() for i in invs],
@@ -228,6 +247,7 @@ def resolve_solution_bundles(catalog: NorthstarCatalog) -> Dict[str, Dict[str, A
         }
 
     return bundles
+
 
 
 
@@ -558,43 +578,50 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
         </div>
       `;
 
-      // 2. Components
+      // 2. Components with nested Requirements
       if (currentBundle.components && currentBundle.components.length > 0) {{
         html += `
           <div class="pt-2">
             <div onclick="selectView('components_overview')" class="cursor-pointer flex items-center justify-between px-3 py-1.5 text-slate-600 hover:text-slate-900 font-semibold">
-              <span class="flex items-center gap-2"><span>📦</span> <span>Components</span></span>
+              <span class="flex items-center gap-2"><span>📦</span> <span>Components & Requirements</span></span>
               <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">${{currentBundle.components.length}}</span>
             </div>
-            <div class="pl-6 space-y-0.5 mt-1 border-l border-slate-200 ml-4">
+            <div class="pl-2 space-y-1.5 mt-1 border-l border-slate-200 ml-3">
               ${{currentBundle.components.map(c => `
-                <div onclick="selectComponent('${{c.uri}}')" class="cursor-pointer px-2 py-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100 truncate ${{activeNodeId === 'comp_' + c.uri ? 'tree-node-active' : ''}}">
-                  ${{c.name || c.uri.split('/').pop()}}
+                <div class="space-y-0.5">
+                  <div onclick="selectComponent('${{c.uri}}')" class="cursor-pointer flex items-center justify-between px-2 py-1 rounded text-slate-800 hover:bg-slate-100 font-medium truncate ${{activeNodeId === 'comp_' + c.uri ? 'tree-node-active' : ''}}">
+                    <span class="truncate">📦 ${{c.name || c.uri.split('/').pop()}}</span>
+                    <span class="text-[9px] bg-purple-50 text-purple-700 px-1.5 py-0.2 rounded font-mono">${{(c.capabilities || []).length}}</span>
+                  </div>
+                  ${{(c.capabilities || []).length > 0 ? `
+                    <div class="pl-3 space-y-0.5 border-l border-slate-100 ml-2">
+                      ${{(c.capabilities || []).map(cap => `
+                        <div onclick="selectCapability('${{cap.uri}}')" class="cursor-pointer px-2 py-0.5 rounded text-[11px] text-slate-500 hover:text-slate-900 hover:bg-slate-100 truncate ${{activeNodeId === 'cap_' + cap.uri ? 'tree-node-active' : ''}}">
+                          ⚡ ${{cap.title || cap.name || cap.uri.split('/').pop()}}
+                        </div>
+                      `).join('')}}
+                    </div>
+                  ` : ''}}
                 </div>
               `).join('')}}
+            </div>
+
+          </div>
+        `;
+      }}
+
+      // 3. Functional Capabilities Overview
+      if (currentBundle.capabilities && currentBundle.capabilities.length > 0) {{
+        html += `
+          <div class="pt-2">
+            <div onclick="selectView('capabilities_overview')" class="cursor-pointer flex items-center justify-between px-3 py-1.5 text-slate-600 hover:text-slate-900 font-semibold">
+              <span class="flex items-center gap-2"><span>⚡</span> <span>All Capabilities</span></span>
+              <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">${{currentBundle.capabilities.length}}</span>
             </div>
           </div>
         `;
       }}
 
-      // 3. Functional Capabilities
-      if (currentBundle.capabilities && currentBundle.capabilities.length > 0) {{
-        html += `
-          <div class="pt-2">
-            <div onclick="selectView('capabilities_overview')" class="cursor-pointer flex items-center justify-between px-3 py-1.5 text-slate-600 hover:text-slate-900 font-semibold">
-              <span class="flex items-center gap-2"><span>⚡</span> <span>Capabilities</span></span>
-              <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">${{currentBundle.capabilities.length}}</span>
-            </div>
-            <div class="pl-6 space-y-0.5 mt-1 border-l border-slate-200 ml-4">
-              ${{currentBundle.capabilities.map(c => `
-                <div onclick="selectCapability('${{c.uri}}')" class="cursor-pointer px-2 py-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100 truncate ${{activeNodeId === 'cap_' + c.uri ? 'tree-node-active' : ''}}">
-                  ${{c.title || c.name || c.uri.split('/').pop()}}
-                </div>
-              `).join('')}}
-            </div>
-          </div>
-        `;
-      }}
 
       // 4. Decisions & ADRs
       if (currentBundle.decisions && currentBundle.decisions.length > 0) {{
@@ -1020,6 +1047,13 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
     // --- DETAIL VIEW: COMPONENT SPEC ---
     function renderComponentDetailView(comp) {{
       const container = document.getElementById('mainViewport');
+      const caps = comp.capabilities || [];
+      const compInvs = (currentBundle.invariants || []).filter(inv =>
+        (comp.boundary_invariants && comp.boundary_invariants.includes(inv.uri)) ||
+        (inv.target_scope && inv.target_scope.includes(comp.uri.split('/').pop())) ||
+        (inv.domain === comp.domain)
+      );
+
       container.innerHTML = `
         <div class="space-y-6">
           <div class="flex items-center justify-between border-b border-slate-200 pb-4">
@@ -1035,16 +1069,138 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
             </button>
           </div>
 
-          <!-- Exported Capabilities Table -->
-          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-3">
-            <div class="text-xs uppercase tracking-wider text-slate-700 font-bold">Exported Public Capabilities</div>
-            <div class="space-y-2">
-              ${{comp.exported_capabilities && comp.exported_capabilities.length > 0 ? comp.exported_capabilities.map(capUri => `
-                <div onclick="selectCapability('${{capUri}}')" class="cursor-pointer p-3 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-slate-50 transition flex justify-between items-center">
-                  <span class="text-xs font-mono font-bold text-blue-700">${{capUri}}</span>
-                  <span class="text-xs text-slate-400">➔</span>
-                </div>
-              `).join('') : '<span class="text-xs text-slate-400">No exported capabilities declared</span>'}}
+          <!-- Component Scope & Namespaces -->
+          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-2">
+            <div class="text-xs uppercase tracking-wider text-slate-700 font-bold">Component Encapsulation & Scope</div>
+            <p class="text-sm text-slate-800 leading-relaxed">
+              ${{comp.description || 'Autonomous functional component encapsulating business domain logic, operational contracts, and state transformations.'}}
+            </p>
+            <div class="flex items-center gap-4 pt-2 text-xs text-slate-500">
+              <span>Domain: <strong class="text-slate-800 font-mono">${{comp.domain}}</strong></span>
+              ${{comp.owned_code_namespaces && comp.owned_code_namespaces.length > 0 ? `<span>Namespaces: <strong class="text-slate-800 font-mono">${{comp.owned_code_namespaces.join(', ')}}</strong></span>` : ''}}
+            </div>
+          </div>
+
+          <!-- REQUIREMENTS FOR THIS COMPONENT (BELOW IT) -->
+          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <span>⚡</span> <span>Requirements & Functional Capabilities (${{caps.length}})</span>
+                </h3>
+                <p class="text-xs text-slate-500 mt-0.5">Authoritative operational requirements exported by this component</p>
+              </div>
+              <span class="text-xs px-2.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono font-semibold">
+                ${{caps.length}} Exported
+              </span>
+            </div>
+
+            ${{caps.length === 0 ? `
+              <div class="p-6 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 text-center font-mono">
+                No explicit requirements or functional capabilities registered for this component yet.
+              </div>
+            ` : `
+              <div class="space-y-4">
+                ${{caps.map(cap => `
+                  <div class="border border-slate-200 hover:border-emerald-300 rounded-xl p-5 bg-slate-50/50 hover:bg-white transition shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span class="font-bold text-slate-900 text-sm">${{cap.title || cap.name}}</span>
+                        <span class="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">${{cap.uri}}</span>
+                      </div>
+                      <button onclick="selectCapability('${{cap.uri}}')" class="text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1 rounded-lg border border-emerald-200 transition">
+                        Full Contract Specification ➔
+                      </button>
+                    </div>
+
+                    <!-- Business Intent Statement -->
+                    <div class="text-xs text-slate-800 bg-white p-3.5 rounded-lg border border-slate-200 leading-relaxed">
+                      <strong class="text-slate-500 block text-[10px] uppercase font-bold mb-1">Requirement Intent</strong>
+                      ${{cap.intent || cap.description || 'Declared functional capability'}}
+                    </div>
+
+                    <!-- Preconditions & Postconditions Grid -->
+                    ${{cap.contract ? `
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div class="bg-amber-50/70 p-3 rounded-lg border border-amber-200 space-y-1">
+                          <strong class="text-[10px] uppercase font-bold text-amber-800 block">Preconditions</strong>
+                          ${{cap.contract.preconditions && cap.contract.preconditions.length > 0 ? cap.contract.preconditions.map(p => `
+                            <div class="text-amber-950 font-medium">• ${{p.description || p}}</div>
+                          `).join('') : '<span class="text-slate-400">None declared</span>'}}
+                        </div>
+                        <div class="bg-emerald-50/70 p-3 rounded-lg border border-emerald-200 space-y-1">
+                          <strong class="text-[10px] uppercase font-bold text-emerald-800 block">Postconditions</strong>
+                          ${{cap.contract.postconditions && cap.contract.postconditions.length > 0 ? cap.contract.postconditions.map(p => `
+                            <div class="text-emerald-950 font-medium">• ${{p.description || p}}</div>
+                          `).join('') : '<span class="text-slate-400">None declared</span>'}}
+                        </div>
+                      </div>
+                    ` : ''}}
+
+                    <!-- Failure Modes & Recovery Table -->
+                    ${{cap.failure_modes && cap.failure_modes.length > 0 ? `
+                      <div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                        <table class="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr class="bg-slate-100 text-slate-600 border-b border-slate-200">
+                              <th class="py-1.5 px-3 font-semibold">Error Name</th>
+                              <th class="py-1.5 px-3 font-semibold">Trigger Condition</th>
+                              <th class="py-1.5 px-3 font-semibold text-emerald-700">Actionable Recovery Runbook</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${{cap.failure_modes.map(fm => `
+                              <tr class="border-b border-slate-100 text-slate-700">
+                                <td class="py-1.5 px-3 font-mono font-bold text-rose-700">${{fm.error_name}}</td>
+                                <td class="py-1.5 px-3">${{fm.trigger_condition}}</td>
+                                <td class="py-1.5 px-3 text-emerald-800 font-medium bg-emerald-50/50">${{fm.recovery_action || 'Report error'}}</td>
+                              </tr>
+                            `).join('')}}
+                          </tbody>
+                        </table>
+                      </div>
+                    ` : ''}}
+                  </div>
+                `).join('')}}
+              </div>
+            `}}
+          </div>
+
+          <!-- Invariants & Data Domains -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
+              <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                <h4 class="text-xs uppercase tracking-wider font-bold text-slate-700 flex items-center gap-1.5">
+                  <span>🛡️</span> <span>Boundary Invariants & Guardrails</span>
+                </h4>
+                <span class="text-[10px] font-mono text-rose-700 bg-rose-50 px-2 py-0.5 rounded font-semibold">${{compInvs.length}} Active</span>
+              </div>
+              <div class="space-y-2">
+                ${{compInvs.length > 0 ? compInvs.map(inv => `
+                  <div onclick="selectInvariant('${{inv.uri}}')" class="cursor-pointer p-2.5 rounded-lg border border-slate-100 hover:border-rose-300 hover:bg-slate-50 transition">
+                    <div class="flex justify-between items-center">
+                      <span class="font-bold text-slate-900 text-xs">${{inv.title || inv.name}}</span>
+                      <span class="text-[9px] font-mono text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded">${{inv.rule_type || 'GUARDRAIL'}}</span>
+                    </div>
+                    <p class="text-xs text-slate-600 mt-1 line-clamp-1">${{inv.description || inv.remediation_hint || ''}}</p>
+                  </div>
+                `).join('') : '<div class="text-xs text-slate-400 p-2 font-mono">No specific boundary invariants assigned</div>'}}
+              </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
+              <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                <h4 class="text-xs uppercase tracking-wider font-bold text-slate-700 flex items-center gap-1.5">
+                  <span>🏛️</span> <span>Owned Data Domains & Schemas</span>
+                </h4>
+              </div>
+              <div class="space-y-1.5">
+                ${{comp.owned_data_domains && comp.owned_data_domains.length > 0 ? comp.owned_data_domains.map(dUri => `
+                  <div class="p-2.5 bg-slate-50 rounded border border-slate-200 text-xs font-mono text-indigo-700 font-semibold">
+                    ${{dUri}}
+                  </div>
+                `).join('') : '<div class="text-xs text-slate-400 p-2 font-mono">No owned data domains declared</div>'}}
+              </div>
             </div>
           </div>
         </div>
@@ -1056,20 +1212,34 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
         <div class="space-y-6">
           <div class="border-b border-slate-200 pb-4">
             <h2 class="text-xl font-bold text-slate-900">📦 Components in ${{currentBundle.display_name}}</h2>
-            <p class="text-xs text-slate-500 mt-1">Autonomous functional units encapsulated by this solution</p>
+            <p class="text-xs text-slate-500 mt-1">Autonomous functional units and their exported requirements</p>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             ${{currentBundle.components.map(c => `
-              <div onclick="selectComponent('${{c.uri}}')" class="cursor-pointer bg-white border border-slate-200 rounded-xl p-5 hover:border-purple-400 transition shadow-sm hover:shadow">
-                <h3 class="font-bold text-slate-900 text-base">${{c.name}}</h3>
-                <span class="text-xs font-mono text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 font-semibold block mt-1">${{c.uri}}</span>
-                <p class="text-xs text-slate-600 mt-2 line-clamp-2">${{c.description || 'Exported capabilities: ' + (c.exported_capabilities ? c.exported_capabilities.length : 0)}}</p>
+              <div onclick="selectComponent('${{c.uri}}')" class="cursor-pointer bg-white border border-slate-200 rounded-xl p-5 hover:border-purple-400 transition shadow-sm hover:shadow space-y-3">
+                <div class="flex justify-between items-center">
+                  <h3 class="font-bold text-slate-900 text-base">${{c.name}}</h3>
+                  <span class="text-xs font-mono text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 font-semibold">${{(c.capabilities || []).length}} Requirements</span>
+                </div>
+                <span class="text-xs font-mono text-slate-400 block">${{c.uri}}</span>
+                <p class="text-xs text-slate-600 line-clamp-2">${{c.description || 'Exported functional requirements and operational contracts.'}}</p>
+                <div class="space-y-1 pt-1 border-t border-slate-100">
+                  ${{(c.capabilities || []).slice(0, 3).map(cap => `
+                    <div class="text-[11px] text-slate-700 flex items-center gap-1.5 truncate">
+                      <span class="text-emerald-600">⚡</span>
+                      <span class="font-medium truncate">${{cap.title || cap.name}}</span>
+                    </div>
+                  `).join('')}}
+                  ${{(c.capabilities || []).length > 3 ? `<div class="text-[10px] text-slate-400 pl-4">+${{(c.capabilities || []).length - 3}} more requirements</div>` : ''}}
+                </div>
               </div>
             `).join('')}}
           </div>
+
         </div>
       `;
     }}
+
 
     function renderCapabilitiesOverview(container) {{
       container.innerHTML = `
