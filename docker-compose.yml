@@ -7,10 +7,11 @@ services:
       dockerfile: Dockerfile
     container_name: northstar-control-plane
     ports:
-      - "8080:8080"
+      - "9480:9480"
     environment:
       - NORTHSTAR_WORKSPACE_ROOT=/workspace
+      - PORT=9480
       - PYTHONUNBUFFERED=1
     volumes:
-      - ./:/workspace
+      - ../:/workspace
     restart: unless-stopped

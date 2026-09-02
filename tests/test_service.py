@@ -90,3 +90,4 @@ def test_service_endpoints_and_lifecycle():
         assert res.status_code == 200
         assert "Northstar Intent Authority" in res.text
         assert "Solution Control Plane" in res.text
+

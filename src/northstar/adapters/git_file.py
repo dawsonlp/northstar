@@ -33,54 +33,71 @@ class GitFileAdapter(IntentRepository):
         self.links_file = self.northstar_meta_dir / "links.yaml"
 
     def load_graph(self) -> IntentGraph:
-        """Scan directory and construct complete in-memory IntentGraph."""
+        """Scan directory and all subdirectories, constructing complete in-memory IntentGraph."""
         graph = IntentGraph()
 
+        scan_dirs = [self.root_dir]
+        if self.root_dir.exists():
+            for child in self.root_dir.iterdir():
+                if child.is_dir() and not child.name.startswith("."):
+                    if (child / "intent").exists() or (child / "adrs").exists() or (child / ".northstar").exists():
+                        scan_dirs.append(child)
+
+        for sdir in scan_dirs:
+            self._load_from_directory(sdir, graph)
+
+        return graph
+
+    def _load_from_directory(self, directory: Path, graph: IntentGraph) -> None:
+        intent_dir = directory / "intent"
+        adrs_dir = directory / "adrs"
+        links_file = directory / ".northstar" / "links.yaml"
+
         # 1. Load Components
-        for path in self._glob_files(self.intent_dir / "components", "*.yaml"):
+        for path in self._glob_files(intent_dir / "components", "*.yaml"):
             data = self._read_yaml(path)
             if data:
                 graph.add_node(ComponentSpec.from_dict(data))
 
         # 2. Load Capabilities
-        for path in self._glob_files(self.intent_dir / "capabilities", "**/*.yaml"):
+        for path in self._glob_files(intent_dir / "capabilities", "**/*.yaml"):
             data = self._read_yaml(path)
             if data:
                 graph.add_node(CapabilitySpec.from_dict(data))
 
         # 3. Load Workflows
-        for path in self._glob_files(self.intent_dir / "workflows", "*.yaml"):
+        for path in self._glob_files(intent_dir / "workflows", "*.yaml"):
             data = self._read_yaml(path)
             if data:
                 graph.add_node(WorkflowSpec.from_dict(data))
 
         # 4. Load Decisions from YAML
-        for path in self._glob_files(self.intent_dir / "decisions", "*.yaml"):
+        for path in self._glob_files(intent_dir / "decisions", "*.yaml"):
             data = self._read_yaml(path)
             if data:
                 graph.add_node(DecisionSpec.from_dict(data))
 
         # 5. Load Constraints / Invariants
-        for path in self._glob_files(self.intent_dir / "constraints", "*.yaml"):
+        for path in self._glob_files(intent_dir / "constraints", "*.yaml"):
             data = self._read_yaml(path)
             if data:
                 graph.add_node(InvariantSpec.from_dict(data))
 
         # 6. Load Policies
-        for path in self._glob_files(self.intent_dir / "policies", "*.yaml"):
+        for path in self._glob_files(intent_dir / "policies", "*.yaml"):
             data = self._read_yaml(path)
             if data:
                 graph.add_node(PolicySpec.from_dict(data))
 
         # 7. Load Qualities
-        for path in self._glob_files(self.intent_dir / "qualities", "*.yaml"):
+        for path in self._glob_files(intent_dir / "qualities", "*.yaml"):
             data = self._read_yaml(path)
             if data:
                 graph.add_node(QualitySpec.from_dict(data))
 
         # 8. Load ADRs from adrs/*.md
-        if self.adrs_dir.exists():
-            for path in self.adrs_dir.glob("*.md"):
+        if adrs_dir.exists():
+            for path in adrs_dir.glob("*.md"):
                 if path.name.lower() in ("readme.md", "template.md"):
                     continue
                 decision = self._parse_adr_markdown(path)
@@ -88,16 +105,14 @@ class GitFileAdapter(IntentRepository):
                     graph.add_node(decision)
 
         # 9. Load Sidecar Links from .northstar/links.yaml
-        if self.links_file.exists():
-            links_data = self._read_yaml(self.links_file)
+        if links_file.exists():
+            links_data = self._read_yaml(links_file)
             if isinstance(links_data, dict) and "links" in links_data:
                 for link in links_data["links"]:
                     graph.add_edge(RelationshipEdge.from_dict(link))
             elif isinstance(links_data, list):
                 for link in links_data:
                     graph.add_edge(RelationshipEdge.from_dict(link))
-
-        return graph
 
     def save_graph(self, graph: IntentGraph) -> None:
         """Write entire intent graph back to disk."""
@@ -243,4 +258,3 @@ class GitFileAdapter(IntentRepository):
         if match:
             return match.group(1).strip()
         return ""
-

@@ -649,3 +649,4 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 """
 
 app = create_app()
+
