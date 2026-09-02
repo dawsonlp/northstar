@@ -153,3 +153,4 @@ docs/design/
 | **Complete Contracts** | Every capability must define operated entities, pre/postconditions, and failure modes. | `CapabilityValidator` flags incomplete specs as `DRAFT`. |
 | **Encapsulated Components**| Components must declare all external dependencies explicitly. | `ArchitecturalBoundaryValidator` in CodeMesh blocks undeclared cross-component calls. |
 | **Traceable Lineage** | Every code symbol (`csi://`) must link back to satisfying a `CapabilitySpec` and conforming to governing ADRs. | CodeMesh invariant verification reports coverage. |
+

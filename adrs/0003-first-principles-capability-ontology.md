@@ -82,3 +82,4 @@ We establish that `northstar` replaces project management taxonomies with a **fi
 
 ### Negative / Trade-offs
 * **Departure from Conventional Agile Tooling**: Requires teams to embrace capability and contract modeling rather than treating user stories as informal text blobs.
+
