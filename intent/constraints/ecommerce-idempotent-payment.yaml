@@ -7,3 +7,4 @@ executable_expression: ""
 remediation_hint: Include idempotency_key header in payment capture payload and check PostgreSQL unique constraint on ecommerce.payment.
 governing_adr: decision://arch/adr-0002-three-tier-decomposition-data-domain-first-capability-api-and-zero-logic-presentation
 status: ACTIVE
+

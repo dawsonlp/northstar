@@ -36,15 +36,30 @@ from northstar.query.lineage import (
 )
 
 
+import re
+
+
+def sanitize_mermaid_id(text: str) -> str:
+    """Sanitize identifier for Mermaid graph nodes."""
+    clean = re.sub(r"[^a-zA-Z0-9_]", "_", str(text))
+    clean = re.sub(r"_+", "_", clean).strip("_")
+    return clean or "node"
+
+
+def sanitize_mermaid_label(text: str) -> str:
+    """Sanitize text inside Mermaid node brackets to prevent parse errors."""
+    clean = re.sub(r'["\'\[\]\(\)\{\}:;<>|#]', "", str(text))
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean
+
+
 def resolve_solution_bundles(catalog: NorthstarCatalog) -> Dict[str, Dict[str, Any]]:
     """Resolve complete, principled solution bundles across components, capabilities, ADRs, and invariants."""
     all_nodes = list(catalog.graph._nodes.values())
     all_edges = [edge for edge_set in catalog.graph._outgoing_edges.values() for edge in edge_set]
 
     # Pre-index governing relationships
-    # Map node_uri -> set of governing ADR URIs
     node_to_governing_adrs: Dict[str, Set[str]] = defaultdict(set)
-    # Map adr_uri -> set of governed node URIs
     adr_to_governed_nodes: Dict[str, Set[str]] = defaultdict(set)
 
     for edge in all_edges:
@@ -53,7 +68,6 @@ def resolve_solution_bundles(catalog: NorthstarCatalog) -> Dict[str, Dict[str, A
             adr_to_governed_nodes[edge.target].add(edge.source)
         elif edge.verb in (RelationalVerb.CONSTRAINS, RelationalVerb.ENFORCES):
             pass
-
 
     # Core predefined solutions
     known_solutions = {
@@ -127,14 +141,12 @@ def resolve_solution_bundles(catalog: NorthstarCatalog) -> Dict[str, Dict[str, A
         if sol_key == "arch":
             decs = [n for n in all_nodes if isinstance(n, DecisionSpec)]
         else:
-            # Include decisions scoped to domain OR governing any component/capability in this solution
             decs = [
                 n for n in all_nodes
                 if isinstance(n, DecisionSpec) and (
                     n.domain == sol_key or
                     any(governed in comp_uris or governed in cap_uris for governed in adr_to_governed_nodes.get(n.uri, set())) or
-                    # Default architectural ADRs apply to Tripartite Authorities
-                    (sol_key in ("groundtruth", "northstar", "codemesh") and "0001" in n.uri or "0002" in n.uri or "0003" in n.uri)
+                    (sol_key in ("groundtruth", "northstar", "codemesh") and any(k in n.uri for k in ("0001", "0002", "0003")))
                 )
             ]
 
@@ -163,43 +175,43 @@ def resolve_solution_bundles(catalog: NorthstarCatalog) -> Dict[str, Dict[str, A
 
         # Render Decisions
         for d in decs[:4]:
-            d_id = "DEC_" + d.uri.split("/")[-1].replace("-", "_").replace(".", "_")
-            d_title = (d.title or d.uri)[:32]
+            d_id = "DEC_" + sanitize_mermaid_id(d.uri.split("/")[-1])
+            d_title = sanitize_mermaid_label((d.title or d.uri)[:30])
             mermaid_lines.append(f'    {d_id}["📜 {d_title}"]:::decNode')
 
         # Render Components
         for c in comps[:6]:
-            c_id = "COMP_" + c.uri.split("/")[-1].replace("-", "_").replace(".", "_")
-            c_name = c.name or c.uri.split("/")[-1]
+            c_id = "COMP_" + sanitize_mermaid_id(c.uri.split("/")[-1])
+            c_name = sanitize_mermaid_label(c.name or c.uri.split("/")[-1])
             mermaid_lines.append(f'    {c_id}["📦 {c_name}"]:::compNode')
             # Connect governing ADRs
             for d in decs:
                 if c.uri in adr_to_governed_nodes.get(d.uri, set()):
-                    d_id = "DEC_" + d.uri.split("/")[-1].replace("-", "_").replace(".", "_")
+                    d_id = "DEC_" + sanitize_mermaid_id(d.uri.split("/")[-1])
                     mermaid_lines.append(f"    {d_id} -.->|governs| {c_id}")
 
         # Render Capabilities & Connect to Components
         for cap in caps[:8]:
-            cap_id = "CAP_" + cap.uri.split("/")[-1].replace("-", "_").replace(".", "_")
-            cap_title = (cap.title or cap.uri)[:28]
+            cap_id = "CAP_" + sanitize_mermaid_id(cap.uri.split("/")[-1])
+            cap_title = sanitize_mermaid_label((cap.title or cap.uri)[:26])
             mermaid_lines.append(f'    {cap_id}["⚡ {cap_title}"]:::capNode')
             # Link to component
             if cap.component:
                 for c in comps:
                     if c.name.lower() == cap.component.lower() or c.uri.split("/")[-1].lower() == cap.component.lower():
-                        c_id = "COMP_" + c.uri.split("/")[-1].replace("-", "_").replace(".", "_")
+                        c_id = "COMP_" + sanitize_mermaid_id(c.uri.split("/")[-1])
                         mermaid_lines.append(f"    {c_id} -->|exports| {cap_id}")
 
         # Render Invariants
         for inv in invs[:4]:
-            inv_id = "INV_" + inv.uri.split("/")[-1].replace("-", "_").replace(".", "_")
-            inv_title = (inv.title or inv.uri)[:30]
+            inv_id = "INV_" + sanitize_mermaid_id(inv.uri.split("/")[-1])
+            inv_title = sanitize_mermaid_label((inv.title or inv.uri)[:28])
             mermaid_lines.append(f'    {inv_id}["🛡️ {inv_title}"]:::invNode')
 
         if len(mermaid_lines) == 5:
             mermaid_lines.append('    EMPTY["ℹ️ No explicit topology graph declared for this solution"]:::decNode')
 
-        mermaid_graph = "\\n".join(mermaid_lines)
+        mermaid_graph = "\n".join(mermaid_lines)
 
         bundles[sol_key] = {
             "solution_name": sol_key,
@@ -216,6 +228,7 @@ def resolve_solution_bundles(catalog: NorthstarCatalog) -> Dict[str, Dict[str, A
         }
 
     return bundles
+
 
 
 def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
@@ -512,12 +525,14 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
         mermaid.initialize({{
           startOnLoad: false,
           theme: 'neutral',
-          securityLevel: 'loose'
+          securityLevel: 'loose',
+          suppressErrorRendering: true
         }});
       }}
     }} catch (e) {{
       console.warn('Mermaid init warning:', e);
     }}
+
 
     function onSolutionChange(solutionName) {{
       activeNodeId = 'overview';
@@ -675,21 +690,31 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
     async function renderChartSafely(targetElementId, chartDefinition) {{
       const el = document.getElementById(targetElementId);
       if (!el) return;
+      if (!chartDefinition || !chartDefinition.trim()) {{
+        el.innerHTML = '<div class="p-4 text-xs text-slate-400 text-center font-mono">No topology chart declared for this view</div>';
+        return;
+      }}
 
       renderCounter++;
       const uniqueId = 'mermaid_svg_ns_' + renderCounter;
 
       try {{
-        if (window.mermaid) {{
-          const {{ svg }} = await window.mermaid.render(uniqueId, chartDefinition);
+        if (window.mermaid && window.mermaid.render) {{
+          const cleanDef = chartDefinition.replace(/\\n/g, '\n').trim();
+          const {{ svg }} = await window.mermaid.render(uniqueId, cleanDef);
           el.innerHTML = svg;
         }} else {{
           el.innerHTML = `<pre class="text-xs font-mono text-slate-800">${{chartDefinition}}</pre>`;
         }}
       }} catch (err) {{
-        el.innerHTML = `<div class="p-4 bg-white border border-slate-200 rounded-lg text-xs font-mono text-blue-800"><pre>${{chartDefinition}}</pre></div>`;
+        console.warn('Mermaid render fallback:', err);
+        document.querySelectorAll('[id^="dmermaid"]').forEach(e => e.remove());
+        document.querySelectorAll('.error-icon').forEach(e => e.closest('div')?.remove());
+        el.innerHTML = `<div class="p-4 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-700 overflow-x-auto"><div class="font-bold text-slate-500 mb-2">Topology Map (Text Definition)</div><pre>${{chartDefinition}}</pre></div>`;
       }}
     }}
+
+
 
     // --- VIEW RENDERERS ---
 

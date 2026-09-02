@@ -29,3 +29,4 @@ operated_entities:
     - data://logical/ecommerce/Order
     - data://logical/ecommerce/OrderItem
   mutates: []
+

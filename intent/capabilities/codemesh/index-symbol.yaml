@@ -20,3 +20,4 @@ operated_entities:
     - data://logical/codemesh/CodeSymbol
     - data://logical/codemesh/SymbolContract
   mutates: []
+

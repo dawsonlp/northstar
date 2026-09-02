@@ -7,3 +7,4 @@ executable_expression: ""
 remediation_hint: Ensure CanonicalSymbolId is constructed using normalized package namespaces and member tuples.
 governing_adr: decision://arch/adr-0001-intent-authority-ontology-and-uris
 status: ACTIVE
+
