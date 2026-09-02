@@ -1,0 +1,20 @@
+uri: component://northstar/catalog
+name: Northstar Catalog Engine
+domain: northstar
+description: In-memory multi-graph catalog and intent closure query engine.
+exported_capabilities:
+  - req://catalog/resolve-governing-intent
+required_dependencies: []
+internal_capabilities: []
+owned_data_domains:
+  - data://logical/intent/*
+owned_code_namespaces:
+  - csi://northstar/catalog/*
+  - csi://northstar/query/*
+boundary_invariants:
+  - constraint://northstar/no-direct-db-import
+governing_policies: []
+lifecycle: ACTIVE
+tags:
+  - core
+  - graph

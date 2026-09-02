@@ -1,0 +1,22 @@
+uri: req://catalog/resolve-governing-intent
+title: Resolve Governing Intent Closure
+intent: Resolves the 2-hop governing intent closure (capabilities, ADRs, constraints, policies) for a target symbol.
+component: catalog
+contract:
+  preconditions:
+    - description: Target URI must be well-formed (csi://, data://, or req://)
+  postconditions:
+    - description: Returns a cohesive IntentClosure containing all direct and 2-hop related intent nodes.
+failure_modes:
+  - error_name: InvalidURIError
+    trigger_condition: URI fails canonical pattern match
+    recovery_action: Raise ValueError with canonical format suggestion
+governed_by:
+  - decision://arch/adr-0001-intent-authority-ontology-and-uris
+  - decision://arch/adr-0006-in-process-tripartite-federation-sdk-runtime
+constraints:
+  - constraint://northstar/no-direct-db-import
+lifecycle: ACTIVE
+tags:
+  - query
+  - closure

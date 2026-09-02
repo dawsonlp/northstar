@@ -89,3 +89,4 @@ We establish that the **Northstar Core Domain Model is strictly storage- and dep
 
 ### Negative / Trade-offs
 * **Adapter Maintenance**: Requires maintaining persistence adapters for both file-system YAML/JSON and relational/document databases.
+

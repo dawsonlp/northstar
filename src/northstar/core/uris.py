@@ -7,7 +7,9 @@ from typing import Optional
 
 
 class SchemeType(str, Enum):
+    COMPONENT = "component"
     REQUIREMENT = "req"
+    WORKFLOW = "workflow"
     DECISION = "decision"
     CONSTRAINT = "constraint"
     POLICY = "policy"
@@ -15,8 +17,8 @@ class SchemeType(str, Enum):
 
 
 URI_PATTERN = re.compile(
-    r"^(?P<scheme>req|decision|constraint|policy|quality)://"
-    r"(?P<domain>[a-z0-9_/-]+)/"
+    r"^(?P<scheme>component|req|workflow|decision|constraint|policy|quality)://"
+    r"(?:(?P<domain>[a-z0-9_/-]+)/)?"
     r"(?P<identifier>[a-z0-9_-]+)"
     r"(?:#(?P<fragment>[a-zA-Z0-9_-]+))?$"
 )
@@ -33,14 +35,25 @@ class NorthstarURI:
     fragment: Optional[str] = None
 
     def __str__(self) -> str:
-        base = f"{self.scheme.value}://{self.domain}/{self.identifier}"
+        if self.domain and self.domain != self.identifier:
+            base = f"{self.scheme.value}://{self.domain}/{self.identifier}"
+        else:
+            base = f"{self.scheme.value}://{self.identifier}"
         if self.fragment:
             return f"{base}#{self.fragment}"
         return base
 
     @property
+    def is_component(self) -> bool:
+        return self.scheme == SchemeType.COMPONENT
+
+    @property
     def is_requirement(self) -> bool:
         return self.scheme == SchemeType.REQUIREMENT
+
+    @property
+    def is_workflow(self) -> bool:
+        return self.scheme == SchemeType.WORKFLOW
 
     @property
     def is_decision(self) -> bool:
@@ -64,15 +77,16 @@ def parse_uri(uri_str: str) -> NorthstarURI:
     match = URI_PATTERN.match(uri_str.strip())
     if not match:
         raise ValueError(
-            f"Invalid Northstar URI: '{uri_str}'. Must match scheme://<domain>/<slug> "
-            f"for schemes (req, decision, constraint, policy, quality)."
+            f"Invalid Northstar URI: '{uri_str}'. Must match scheme://[domain/]slug "
+            f"for schemes (component, req, workflow, decision, constraint, policy, quality)."
         )
 
     scheme_str = match.group("scheme")
-    domain = match.group("domain").strip("/")
+    raw_domain = match.group("domain")
     identifier = match.group("identifier")
     fragment = match.group("fragment")
 
+    domain = raw_domain.strip("/") if raw_domain else identifier
     scheme = SchemeType(scheme_str)
 
     # Specific check for ADR format
@@ -88,4 +102,3 @@ def parse_uri(uri_str: str) -> NorthstarURI:
         identifier=identifier,
         fragment=fragment,
     )
-

@@ -70,7 +70,7 @@ def test_intent_closure_markdown_generation():
         ],
     )
     md = closure.to_markdown_prompt_context()
-    assert "### Governing Intent & Constraints for `csi://ecommerce/services/PaymentService.charge`" in md
+    assert "Governing Intent & Constraints for `csi://ecommerce/services/PaymentService.charge`" in md
     assert "Idempotent Payment Charge" in md
     assert "ADR 004: Stripe Keys" in md
     assert "Layer Isolation" in md

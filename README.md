@@ -1,12 +1,12 @@
 # Northstar 🧭
 
-> **The Single Source of Truth for Intent, Requirements, and Governance Semantics in the Tripartite Federation**
+> **The Single Source of Truth for Intent, Requirements, and Governance Semantics in the Tripartite Semantic Federation**
 
-**Northstar** bridges abstract human purpose, business requirements, architectural decisions, and regulatory mandates into machine-navigable, queryable semantic graph entities. In the **Tripartite Semantic Federation**, Northstar represents the **Intent Domain** ("Why & What Is Permitted"), partnering with **CodeMesh** ("How It Computes") and **GroundTruth** ("What Data Exists & Means").
+**Northstar** models abstract human purpose, business requirements, architectural decisions, and regulatory mandates into mathematically sound, queryable semantic graph entities. In the **Tripartite Semantic Federation**, Northstar represents the **Intent Domain** ("Why & What Is Permitted"), partnering with **CodeMesh** ("How It Computes") and **GroundTruth** ("What Data Exists & Means").
 
 ---
 
-## The Tripartite Semantic Federation
+## 1. The Tripartite Semantic Federation
 
 Autonomous AI software engineering requires reasoning across three distinct semantic planes without ontological conflation:
 
@@ -16,10 +16,11 @@ Autonomous AI software engineering requires reasoning across three distinct sema
                           │                       (Northstar)                       │
                           │                (Why & What Is Permitted)                │
                           │                                                         │
-                          │   • Requirements (Functional / Non-Functional)          │
-                          │   • Architectural Decision Records (ADRs)               │
-                          │   • Constraints & Executable Guardrails                 │
-                          │   • Policies (Security, Privacy, Compliance, SLOs)      │
+                          │   • Capability Operational Contracts (pre/postconditions)│
+                          │   • Bounded Contexts & Components                       │
+                          │   • Architectural Decision Records (MADR ADRs)          │
+                          │   • Executable Invariant Guardrails & AST Rules         │
+                          │   • Compliance Policies & Quality SLOs                  │
                           └───────────────▲─────────────────────────▲───────────────┘
                                           │                         │
                             GOVERNS /     │                         │ CONSTRAINS /
@@ -40,121 +41,123 @@ Autonomous AI software engineering requires reasoning across three distinct sema
 
 | Authority | Focus | Canonical URI Schemes |
 | :--- | :--- | :--- |
-| **Northstar** | Why the software exists, business goals, regulatory constraints, architectural decisions, and executable guardrails. | `req://...`<br>`decision://...`<br>`constraint://...`<br>`policy://...`<br>`quality://...` |
+| **Northstar** | Why the software exists, business goals, regulatory constraints, architectural decisions, and executable guardrails. | `component://...`<br>`req://...`<br>`workflow://...`<br>`decision://...`<br>`constraint://...`<br>`policy://...`<br>`quality://...` |
 | **CodeMesh** | How computation is structured, executed, tested, and materialized into physical source code. | `csi://<package>/<namespace>/<Symbol>[.<member>]` |
 | **GroundTruth** | The structure, business meaning, relationships, integrity rules, and physical schemas of persistent/transient data. | `data://conceptual/...`<br>`data://logical/...`<br>`data://physical/...` |
 
 ---
 
-## Canonical Addressing Grammar
+## 2. First-Principles Intent Ontology
 
-Northstar exposes deterministic, versioned URIs across five primary entity types:
+In accordance with **[Tripartite ADR 0001](../../adrs/0001-first-principles-information-dependencies-for-ontology-design.md)** and **[Northstar ADR 0003](adrs/0003-first-principles-capability-ontology.md)**, Northstar rejects administrative Agile project management taxonomies (Jira Epics, Features, Story Points). Instead, functional intent is expressed as formal **Operational Contracts**:
 
-### 1. Functional & User Requirements (`req://`)
-* **Format**: `req://<domain>/<id-or-slug>`
-* **Examples**:
-  * `req://payments/idempotent-charge-execution`
-  * `req://auth/multi-factor-mandatory-for-admins`
-
-### 2. Architectural Decision Records (`decision://`)
-* **Format**: `decision://<domain>/<adr-number>-<slug>`
-* **Examples**:
-  * `decision://payments/adr-004-stripe-idempotency-keys`
-  * `decision://storage/adr-012-postgres-jsonb-for-line-items`
-
-### 3. Invariant Constraints & Guardrails (`constraint://`)
-* **Format**: `constraint://<domain>/<id-or-slug>`
-* **Examples**:
-  * `constraint://architecture/domain-services-must-not-import-db-drivers`
-  * `constraint://orders/order-total-must-match-item-sum`
-
-### 4. Governance & Compliance Policies (`policy://`)
-* **Format**: `policy://<domain>/<id-or-slug>`
-* **Examples**:
-  * `policy://security/no-raw-sql-in-controllers`
-  * `policy://privacy/gdpr-right-to-erasure-compliance`
-
-### 5. Quality Attributes & SLOs (`quality://`)
-* **Format**: `quality://<domain>/<id-or-slug>`
-* **Examples**:
-  * `quality://checkout/p99-latency-under-200ms`
-  * `quality://availability/99-99-uptime-during-peak`
+1. **`CapabilitySpec` (`req://<component>/<slug>`)**:
+   - **Preconditions**: State guarantees required before execution (`customer.status == 'ACTIVE'`).
+   - **Postconditions**: Guarantees established upon success (`payment.status == 'PAID'`).
+   - **State Transitions**: Formal entity state mutations (`PENDING -> PAID`).
+   - **Failure Modes**: Explicit domain error branches, trigger conditions, and recovery actions.
+   - **Operated Entities**: Explicit references to GroundTruth logical entities (`data://logical/...`).
+2. **`ComponentSpec` (`component://<domain>/<slug>`)**:
+   - Bounded contexts with exported capabilities, required external dependencies, and boundary invariants.
+3. **`WorkflowSpec` (`req://<domain>/workflow/<slug>`)**:
+   - Multi-step distributed sagas, dependency choreography, and compensating rollback handlers.
+4. **`DecisionSpec` (`decision://<domain>/<adr-number>-<slug>`)**:
+   - MADR architectural decisions with trade-offs, supersession lineage, and imposed constraints.
+5. **`InvariantSpec` (`constraint://<domain>/<slug>`)**:
+   - Machine-executable AST rules (boundary import checks, mandatory decorators, purity bounds) with actionable remediation hints.
 
 ---
 
-## Core Capabilities
+## 3. Pluggable Multi-Topology Deployment
 
-### 1. Dual-Representation Constraints
-* **Declarative Intent (For LLMs)**: Structured Markdown summarizing *Intent*, *Rationale*, *Scope*, *Examples*, and *Anti-Patterns*, injected directly into CodeMesh prompt context stubs.
-* **Executable Invariant Gates (For CI/CD & Agent Runtimes)**: Machine-executable Python callables, AST validators, and policy expressions evaluated before ASTs are projected to disk.
+In accordance with **[Northstar ADR 0007](adrs/0007-pluggable-storage-adapters-and-multi-topology-deployment.md)**, the core domain model is 100% decoupled from persistence through a clean Ports-and-Adapters architecture:
 
-### 2. Actionable Diagnostics with Remediation Hints
-When an invariant constraint is violated, Northstar returns rich, actionable diagnostics to the agent or developer:
+* **Mode 1: Git-Native File Adapter (`GitFileAdapter`)**:
+  - `intent/**/*.yaml` manifests, `adrs/*.md` Markdown files, and `.northstar/links.yaml` sidecar links.
+  - Optimal for offline local development, Git branch merging, and pre-commit CI/CD gates.
+* **Mode 2: Embedded SQLite Adapter (`SQLiteAdapter`)**:
+  - Compiles the graph into `.northstar/catalog.sqlite3` for sub-millisecond local caching and IDE autocomplete extensions.
+* **Mode 3: Hosted Service & Solution Control Plane (`PostgresServiceAdapter`)**:
+  - Powers web dashboards for development stage tracking, stakeholder elicitation dialogues, and browsable knowledge graph projections.
 
-```json
-{
-  "constraint_uri": "constraint://architecture/domain-service-isolation",
-  "severity": "ERROR",
-  "violation_target": "csi://sample_ecommerce/services/OrderService",
-  "message": "Domain service 'OrderService' directly instantiates Postgres database driver.",
-  "governing_adr": "decision://architecture/adr-002-dependency-inversion",
-  "remediation_hint": "Inject 'Repository[Order]' interface into '__init__' and configure concrete adapter in container."
-}
+---
+
+## 4. Quickstart & Python SDK Usage
+
+### Installation
+```bash
+uv add northstar-intent
 ```
 
-### 3. Multi-Tiered Provenance & Lifecycle State Machine
-* **Authority Tiers**: `DECLARED` (Human/Regulatory, 1.0), `DERIVED` (Extracted deterministically from AST/Specs, 1.0), `INFERRED` (AI proposed, 0.0 - 0.99).
-* **Lifecycle States**: $\text{DRAFT} \longrightarrow \text{PROPOSED} \longrightarrow \text{ACTIVE} \longrightarrow \text{DEPRECATED} \longrightarrow \text{SUPERSEDED}$.
-
----
-
-## Quick Start (Python SDK)
-
+### 1. Auto-Discover & Load Workspace Intent
 ```python
 from northstar import NorthstarCatalog
-from northstar.core.models import RequirementNode, DecisionNode, ConstraintNode
 
-# 1. Initialize Northstar Intent Catalog
-catalog = NorthstarCatalog()
+# Load all intent manifests and ADRs from repository root
+catalog = NorthstarCatalog.load(".")
 
-# 2. Register an Architectural Decision and Requirement
-catalog.register_decision(
-    DecisionNode(
-        uri="decision://payments/adr-004-stripe-idempotency-keys",
-        title="ADR 004: Enforce Stripe Idempotency Keys on Payment Operations",
-        status="ACTIVE",
-        context="Prevent duplicate credit card charges during network retries.",
-        decision="All payment gateway charge calls must generate and pass a deterministic UUID key.",
-    )
-)
+print(f"Loaded {catalog.graph.node_count} intent nodes across components.")
+```
 
-catalog.register_requirement(
-    RequirementNode(
-        uri="req://payments/idempotent-charge-execution",
-        title="Idempotent Payment Capture",
-        description="Every payment capture attempt must guarantee exactly-once processing semantics.",
-        domain="payments",
-        governed_by=["decision://payments/adr-004-stripe-idempotency-keys"],
-    )
-)
+### 2. Query 2-Hop Governing Intent Closure
+```python
+# Resolve all capabilities, ADRs, and constraints governing a code symbol
+closure = catalog.get_governing_intent("csi://payments/PaymentService.charge")
 
-# 3. Query governing intent for a code symbol
-intent_closure = catalog.get_governing_intent(
-    target_csi="csi://ecommerce/services/PaymentService.charge"
-)
-print(f"Active Requirements: {len(intent_closure.requirements)}")
-print(f"Governing ADRs: {[d.title for d in intent_closure.decisions]}")
+# Inject high-density Markdown into AI agent prompt context
+markdown_prompt = closure.to_markdown_prompt_context()
+print(markdown_prompt)
+```
+
+### 3. Pre-Commit Invariant Guardrail Validation
+```python
+proposed_code = """
+import psycopg2
+
+def charge(req):
+    return {"status": "PAID"}
+"""
+
+# Validate AST against all active constraints
+violations = catalog.validate_code("csi://payments/PaymentService.charge", proposed_code)
+
+for v in violations:
+    print(f"⚠️ {v.constraint_uri}: {v.message}")
+    print(f"   💡 Remediation Hint: {v.remediation_hint}")
+```
+
+### 4. Trace ADR Supersession Lineage
+```python
+lineage = catalog.get_decision_lineage("decision://payments/adr-004-idempotency")
+for adr in lineage:
+    print(f"-> {adr.title} ({adr.uri})")
 ```
 
 ---
 
-## Documentation & Federation Standards
+## 5. Master Design Documentation
 
-* 📚 **[Documentation Portal](docs/README.md)**: Index and reading paths.
-* 📄 **[Requirements Authority Specification](docs/specifications/requirements_authority_spec.md)**: Full functional and non-functional requirements specification.
-* 📄 **[URI Addressing Grammar](docs/specifications/uri_addressing_grammar.md)**: Complete grammar for all 5 intent URI schemes.
-* 📄 **[Executable Invariants Engine](docs/specifications/executable_invariants_engine.md)**: Invariant gate specification and diagnostic protocol.
-* 📄 **[Tripartite Integration Guide](docs/federation/tripartite_integration.md)**: Cross-linking with CodeMesh and GroundTruth.
-* 📐 **[JSON Schemas](schemas/)**: Normative JSON schema definitions for intent nodes and diagnostics.
-* 🏛️ **[Architectural Decision Records](adrs/)**: Internal ADRs establishing Northstar's architecture.
+Deep architectural specifications are organized in **[`docs/design/`](docs/design/README.md)**:
 
+* **[Master Driver & Overview](docs/design/README.md)**: Architecture, dual objectives, and 6 facets of intent.
+* **[01. Core Intent Ontology](docs/design/01_core_intent_ontology_and_entities.md)**: `CapabilitySpec`, pre/postconditions, failure modes.
+* **[02. Component Decomposition](docs/design/02_component_decomposition_and_bounded_contexts.md)**: `ComponentSpec`, interfaces, boundary invariants.
+* **[03. Temporal Workflows & Choreography](docs/design/03_temporal_workflows_and_choreography.md)**: Sagas, compensations, distributed timeouts.
+* **[04. Relational Intent Graph](docs/design/04_relational_intent_graph_and_closure.md)**: Multi-graph engine, 2-hop closure resolution.
+* **[05. Executable Invariants](docs/design/05_executable_invariants_and_guardrails.md)**: Two-tiered AST visitors, CEL rules, remediation hints.
+* **[06. Human Elicitation & AI Compilation](docs/design/06_human_elicitation_and_ai_compilation.md)**: Stakeholder interview dialogues and direct compilation.
+
+---
+
+## 6. Running Tests
+
+```bash
+uv run pytest
+```
+* **35 unit and integration tests passing in $< 0.1\text{s}$**.
+
+---
+
+## 7. License
+
+Apache 2.0. Built for the Tripartite Semantic Federation.

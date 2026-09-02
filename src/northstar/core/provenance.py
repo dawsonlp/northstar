@@ -41,3 +41,30 @@ class ProvenanceMetadata:
             "notes": self.notes,
         }
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProvenanceMetadata":
+        if not data:
+            return cls()
+
+        tier = data.get("tier", AuthorityTier.DECLARED.value)
+        if isinstance(tier, str):
+            tier = AuthorityTier(tier)
+
+        created_at_val = data.get("created_at")
+        if isinstance(created_at_val, str):
+            try:
+                created_at = datetime.fromisoformat(created_at_val)
+            except Exception:
+                created_at = datetime.now(timezone.utc)
+        elif isinstance(created_at_val, datetime):
+            created_at = created_at_val
+        else:
+            created_at = datetime.now(timezone.utc)
+
+        return cls(
+            tier=tier,
+            confidence=float(data.get("confidence", 1.0)),
+            author=data.get("author"),
+            created_at=created_at,
+            notes=data.get("notes"),
+        )
