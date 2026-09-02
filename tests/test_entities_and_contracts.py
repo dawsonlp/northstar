@@ -260,3 +260,4 @@ def test_intent_closure_markdown_rendering():
     assert "ADR 004: Idempotency" in md
     assert "Mandatory Decorator" in md
     assert "Add @idempotent decorator" in md
+

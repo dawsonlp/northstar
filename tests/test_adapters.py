@@ -132,3 +132,4 @@ def test_sqlite_adapter_roundtrip():
         assert restored.edge_count == 1
         assert restored.has_node("req://orders/create-order")
         assert restored.has_node("policy://security/gdpr")
+

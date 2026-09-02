@@ -155,3 +155,4 @@ def charge(req) -> dict:
         sqlite_file = workspace_root / ".northstar/catalog.sqlite3"
         loaded_catalog.save_sqlite(sqlite_file)
         assert sqlite_file.exists()
+

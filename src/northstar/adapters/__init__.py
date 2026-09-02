@@ -9,3 +9,4 @@ __all__ = [
     "GitFileAdapter",
     "SQLiteAdapter",
 ]
+

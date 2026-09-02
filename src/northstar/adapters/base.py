@@ -30,3 +30,4 @@ class IntentRepository(ABC):
     def save_edge(self, edge: RelationshipEdge) -> None:
         """Save or update a relational edge."""
         pass
+

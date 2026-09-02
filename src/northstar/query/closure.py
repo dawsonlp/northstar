@@ -128,3 +128,4 @@ def resolve_intent_closure(graph: IntentGraph, target_uri: str) -> IntentClosure
         policies=resolved_pols,
         qualities=resolved_quals,
     )
+

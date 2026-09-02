@@ -243,3 +243,4 @@ class GitFileAdapter(IntentRepository):
         if match:
             return match.group(1).strip()
         return ""
+

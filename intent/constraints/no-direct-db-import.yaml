@@ -7,3 +7,4 @@ executable_expression: ""
 remediation_hint: Inject persistence repository interface via northstar.adapters.base.IntentRepository.
 governing_adr: decision://arch/adr-0007-pluggable-storage-adapters-and-multi-topology-deployment
 status: ACTIVE
+

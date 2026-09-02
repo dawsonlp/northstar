@@ -173,3 +173,4 @@ def test_invariant_engine_register_from_spec():
     violations = engine.validate_code("csi://payments/charge", bad_code)
     assert len(violations) == 1
     assert "missing mandatory '@idempotent' decorator" in violations[0].message
+

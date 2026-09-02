@@ -212,3 +212,4 @@ def test_impact_radius_analysis():
     assert "csi://payments/PaymentService.charge" in report["impacted_code_symbols"]
     assert "data://logical/payments/Payment" in report["impacted_data_entities"]
     assert report["total_impacted_nodes"] == 2
+

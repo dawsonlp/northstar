@@ -130,3 +130,4 @@ class SQLiteAdapter(IntentRepository):
                 (edge.source, verb_str, edge.target, json.dumps(edge.provenance.to_dict()), json.dumps(edge.metadata)),
             )
             conn.commit()
+

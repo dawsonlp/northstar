@@ -25,3 +25,4 @@ def test_northstar_self_dogfood():
     # Verify context markdown prompt generation
     md = closure.to_markdown_prompt_context()
     assert "Resolve Governing Intent Closure" in md
+

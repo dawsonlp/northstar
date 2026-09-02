@@ -348,3 +348,4 @@ class TypeContractValidator(ConstraintValidator):
                             )
                         )
         return violations
+

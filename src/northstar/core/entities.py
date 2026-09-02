@@ -635,3 +635,4 @@ class IntentClosure:
 
 # Type alias for any intent node
 IntentNode = CapabilitySpec | ComponentSpec | WorkflowSpec | DecisionSpec | InvariantSpec | PolicySpec | QualitySpec
+

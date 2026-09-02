@@ -171,3 +171,4 @@ class OperatedEntities:
             mutates=data.get("mutates", []),
             deletes=data.get("deletes", []),
         )
+

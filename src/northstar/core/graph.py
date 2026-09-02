@@ -189,3 +189,4 @@ class IntentGraph:
             "nodes": nodes_dict,
             "edges": all_edges,
         }
+

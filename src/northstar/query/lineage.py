@@ -133,3 +133,4 @@ def get_impact_radius(graph: IntentGraph, changed_uris: List[str]) -> Dict[str, 
         "impacted_components": list(impacted_components),
         "total_impacted_nodes": len(visited) - len(changed_uris),
     }
+
