@@ -215,6 +215,19 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
 
         return {"solutions": result}
 
+    @app.post("/api/v1/solutions/{solution_name}/project")
+    def project_solution_docs(solution_name: str, target_dir: Optional[str] = None):
+        """Project a solution's intent graph into a structured documentation suite on disk."""
+        target_path = Path(target_dir or (app.state.workspace_root / solution_name / "docs" / "requirements"))
+        generated = catalog.project_solution_docs(solution_name, target_path)
+        return {
+            "status": "projected",
+            "solution_name": solution_name,
+            "target_dir": str(target_path),
+            "file_count": len(generated),
+            "files": [str(p) for p in generated],
+        }
+
     @app.get("/", response_class=HTMLResponse)
     @app.get("/dashboard", response_class=HTMLResponse)
     def render_dashboard():
@@ -222,6 +235,7 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
         return DASHBOARD_HTML
 
     return app
+
 
 
 DASHBOARD_HTML = """<!DOCTYPE html>

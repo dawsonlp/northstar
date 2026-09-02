@@ -39,6 +39,7 @@ from northstar.core.models import (
 )
 from northstar.core.provenance import AuthorityTier, LifecycleState, ProvenanceMetadata
 from northstar.core.uris import NorthstarURI, parse_uri
+from northstar.projection import DocumentationProjector
 from northstar.validators.engine import (
     ArchitecturalBoundaryValidator,
     ConstraintValidator,
@@ -57,7 +58,9 @@ __version__ = "0.1.0"
 
 __all__ = [
     "NorthstarCatalog",
+    "DocumentationProjector",
     "IntentGraph",
+
     "IntentRepository",
     "GitFileAdapter",
     "SQLiteAdapter",

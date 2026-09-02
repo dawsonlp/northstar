@@ -173,5 +173,12 @@ class NorthstarCatalog:
         """Validate proposed code edits against all registered executable invariants."""
         return self.invariant_engine.validate_code(target_symbol, code_content, metadata)
 
+    def project_solution_docs(self, solution_name: str, target_dir: str | Path) -> List[Path]:
+        """Project a solution's intent graph into a structured documentation suite."""
+        from northstar.projection.docs_projector import DocumentationProjector
+        projector = DocumentationProjector(self.graph)
+        return projector.project_solution(solution_name, target_dir)
+
 
 __all__ = ["NorthstarCatalog"]
+
