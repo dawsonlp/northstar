@@ -6,7 +6,8 @@ Welcome to the documentation portal for **Northstar**, the single source of trut
 
 ## Reading Paths
 
-### 1. Architectural & Core Concepts
+### 1. Master Architecture & Design Specifications (`docs/design/`)
+* 🧭 **[Master Design Driver & Index](design/README.md)**: Foundational architecture, the 6 facets of intent, component decomposition model, and downstream design hierarchy.
 * 📄 **[Requirements Authority Specification](specifications/requirements_authority_spec.md)**: Comprehensive specification of functional requirements, data models, lifecycle states, and authority tiers.
 * 📄 **[URI Addressing Grammar](specifications/uri_addressing_grammar.md)**: Formal grammar for `req://`, `decision://`, `constraint://`, `policy://`, and `quality://`.
 * 📄 **[Executable Invariants Engine](specifications/executable_invariants_engine.md)**: Specification for machine-executable invariant gates, pre-commit AST validation, and actionable diagnostic generation.
