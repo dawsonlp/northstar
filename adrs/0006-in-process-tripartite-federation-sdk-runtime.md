@@ -68,3 +68,4 @@ We establish that the primary runtime for the Tripartite Federation is an **In-P
 
 ### Negative / Trade-offs
 * **Language Coupling**: Requires tools calling the core SDK directly to run in Python 3.11+ (mitigated by optional CLI and JSON-RPC wrappers for non-Python agents).
+

@@ -86,3 +86,4 @@ class ConstraintViolation:
 
 ### Negative / Trade-offs
 * **Expressiveness Limits**: Highly dynamic runtime reflection cannot be evaluated statically via AST inspection.
+

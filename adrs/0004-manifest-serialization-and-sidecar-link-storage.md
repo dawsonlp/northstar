@@ -104,3 +104,4 @@ edges:
 
 ### Negative / Trade-offs
 * **Merge Conflicts in `links.yaml`**: Parallel branches adding many links may require standard YAML merge resolution (mitigated by sorted list canonicalization).
+
