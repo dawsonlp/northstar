@@ -93,3 +93,4 @@ def test_documentation_projection_engine():
         assert "Entity links to conceptual term" in cap_text
         assert "Postconditions" in cap_text
         assert "ADR 0001: MOF & DAMA Conformance" in cap_text
+

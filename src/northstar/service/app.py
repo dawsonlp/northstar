@@ -1,6 +1,13 @@
-"""FastAPI Service and Solution Control Plane Web Portal for Northstar."""
+"""FastAPI Service and Solution Control Plane Web Portal for Northstar.
+
+Adheres strictly to ADR 0002:
+1. Intent Domain First (Multi-tenant, solution-scoped intent graphs)
+2. Equalized Capability API (Non-CRUD intent, verification, and closure queries)
+3. Zero-Logic Access Layer (Ultra-thin presentation, crisp Light Theme, no dark mode)
+"""
 
 from collections import defaultdict
+import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -8,6 +15,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from northstar.adapters.git_file import GitFileAdapter
+from northstar.adapters.postgres import PostgresAdapter
 from northstar.api import NorthstarCatalog
 from northstar.core.entities import (
     CapabilitySpec,
@@ -19,31 +28,48 @@ from northstar.core.entities import (
     WorkflowSpec,
 )
 from northstar.core.models import RelationalVerb, RelationshipEdge
+from northstar.query.closure import resolve_intent_closure
+from northstar.query.lineage import (
+    get_component_dependencies,
+    get_decision_lineage,
+    get_impact_radius,
+)
+
 
 
 def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
-    """Factory creating configured FastAPI application."""
     root_path = Path(workspace_root or os.getenv("NORTHSTAR_WORKSPACE_ROOT", "."))
     
     app = FastAPI(
         title="Northstar Intent & Governance Control Plane",
         description="The Intent, Requirements, and Governance Authority for the Tripartite Semantic Federation",
-        version="0.1.0",
+        version="0.2.0",
     )
 
-    # Initialize catalog
+    # 1. Initialize catalog from Git/YAML manifests
     if (root_path / "intent").exists() or (root_path / "adrs").exists() or (root_path / ".northstar").exists():
         catalog = NorthstarCatalog.load(root_path)
     else:
         catalog = NorthstarCatalog()
 
-    # Store catalog in app state
+    # 2. Sync / Connect to Larnet PostgreSQL if available
+    postgres_adapter = None
+    try:
+        pg_host = os.getenv("POSTGRES_HOST", "localhost")
+        pg_port = int(os.getenv("POSTGRES_PORT", "15432"))
+        postgres_adapter = PostgresAdapter(host=pg_host, port=pg_port)
+        # Sync in-memory loaded graph into Postgres
+        postgres_adapter.save_graph(catalog.graph)
+    except Exception as e:
+        print(f"[Northstar] Notice: Running in hybrid memory/git mode (Postgres sync deferred: {e})")
+
     app.state.catalog = catalog
+    app.state.postgres = postgres_adapter
     app.state.workspace_root = root_path
 
     # Pydantic Request Models
     class NodePayload(BaseModel):
-        type: str  # CapabilitySpec, ComponentSpec, DecisionSpec, InvariantSpec, PolicySpec, QualitySpec, WorkflowSpec
+        type: str
         data: Dict[str, Any]
 
     class LinkPayload(BaseModel):
@@ -57,35 +83,87 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
         code_content: str
         metadata: Optional[Dict[str, Any]] = None
 
+    # =========================================================================
+    # CAPABILITY API ENDPOINTS
+    # =========================================================================
+
     @app.get("/health")
     def health_check():
         return {
             "status": "ok",
+            "service": "northstar",
             "workspace_root": str(app.state.workspace_root),
             "node_count": catalog.graph.node_count,
             "edge_count": catalog.graph.edge_count,
         }
 
+    @app.get("/api/v1/solutions")
+    def list_solutions():
+        """Discover all solution domain packages partitioned under tenants."""
+        nodes = list(catalog.graph._nodes.values())
+        domains = sorted(list({n.domain for n in nodes}))
+        
+        solutions = []
+        for d in domains:
+            d_nodes = [n for n in nodes if n.domain == d]
+            caps = [n for n in d_nodes if isinstance(n, CapabilitySpec)]
+            decs = [n for n in d_nodes if isinstance(n, DecisionSpec)]
+            comps = [n for n in d_nodes if isinstance(n, ComponentSpec)]
+            invs = [n for n in d_nodes if isinstance(n, InvariantSpec)]
+
+            solutions.append({
+                "solution_name": d,
+                "display_name": {
+                    "northstar": "🧭 Northstar Intent Authority",
+                    "groundtruth": "🏛️ GroundTruth Data Authority",
+                    "codemesh": "🕸️ CodeMesh Computation Authority",
+                    "ecommerce": "🛒 E-Commerce & Payments Domain",
+                    "arch": "📐 Federation Architectural Decisions",
+                }.get(d, f"📦 {d.capitalize()} Solution"),
+                "total_nodes": len(d_nodes),
+                "capabilities": len(caps),
+                "decisions": len(decs),
+                "components": len(comps),
+                "invariants": len(invs),
+            })
+
+        return {"tenant": "tripartite", "solutions": solutions}
+
+    @app.get("/api/v1/solutions/{solution_name}")
+    def get_solution_details(solution_name: str):
+        """Retrieve complete intent and governance specification for a solution."""
+        all_nodes = list(catalog.graph._nodes.values())
+        d_nodes = [n for n in all_nodes if n.domain == solution_name]
+
+        return {
+            "solution_name": solution_name,
+            "display_name": {
+                "northstar": "🧭 Northstar Intent Authority",
+                "groundtruth": "🏛️ GroundTruth Data Authority",
+                "codemesh": "🕸️ CodeMesh Computation Authority",
+                "ecommerce": "🛒 E-Commerce & Payments Domain",
+                "arch": "📐 Federation Architectural Decisions",
+            }.get(solution_name, f"📦 {solution_name.capitalize()} Solution"),
+            "nodes": [n.to_dict() for n in d_nodes],
+            "capabilities": [n.to_dict() for n in d_nodes if isinstance(n, CapabilitySpec)],
+            "decisions": [n.to_dict() for n in d_nodes if isinstance(n, DecisionSpec)],
+            "components": [n.to_dict() for n in d_nodes if isinstance(n, ComponentSpec)],
+            "invariants": [n.to_dict() for n in d_nodes if isinstance(n, InvariantSpec)],
+        }
+
     @app.get("/api/v1/graph")
     def get_graph():
-        """Get the full serialized intent multi-graph."""
         return catalog.graph.to_dict()
 
     @app.get("/api/v1/nodes/{uri:path}")
     def get_node(uri: str):
-        """Retrieve a specific intent node by canonical URI."""
         node = catalog.graph.get_node(uri)
         if not node:
             raise HTTPException(status_code=404, detail=f"Intent node '{uri}' not found")
-        return {
-            "uri": node.uri,
-            "type": node.__class__.__name__,
-            "data": node.to_dict(),
-        }
+        return {"uri": node.uri, "type": node.__class__.__name__, "data": node.to_dict()}
 
     @app.post("/api/v1/nodes")
     def register_node(payload: NodePayload):
-        """Register or update an intent node."""
         node_type = payload.type
         data = payload.data
         if node_type == "CapabilitySpec":
@@ -103,564 +181,494 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
         elif node_type == "QualitySpec":
             node = QualitySpec.from_dict(data)
         else:
-            raise HTTPException(status_code=400, detail=f"Unsupported node type: {node_type}")
+            raise HTTPException(status_code=400, detail=f"Unknown node type: {node_type}")
 
-        catalog.add(node)
-        return {"status": "registered", "uri": node.uri}
+        catalog.graph.add_node(node)
+        if app.state.postgres:
+            try:
+                app.state.postgres.save_node(node)
+            except Exception as e:
+                print(f"[Northstar] Postgres save failed: {e}")
+
+        return {"status": "created", "uri": node.uri}
 
     @app.post("/api/v1/links")
     def register_link(payload: LinkPayload):
-        """Register a typed relational edge."""
         try:
             verb = RelationalVerb(payload.verb)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid relational verb: {payload.verb}")
+            raise HTTPException(status_code=400, detail=f"Invalid verb: {payload.verb}")
 
-        edge = catalog.link(payload.source, verb, payload.target, payload.metadata)
-        return {"status": "linked", "edge": edge.to_dict()}
+        edge = RelationshipEdge(
+            source=payload.source,
+            verb=verb,
+            target=payload.target,
+            metadata=payload.metadata or {},
+        )
+        catalog.graph.add_edge(edge)
+        if app.state.postgres:
+            try:
+                app.state.postgres.save_edge(edge)
+            except Exception as e:
+                print(f"[Northstar] Postgres edge save failed: {e}")
 
     @app.get("/api/v1/closure")
-    def get_closure(target_uri: str = Query(..., description="Target CSI or intent URI")):
-        """Resolve the 2-hop governing intent closure for prompt context injection."""
-        closure = catalog.get_governing_intent(target_uri)
-        return {
-            "target_symbol": closure.target_symbol,
-            "capabilities": [c.to_dict() for c in closure.capabilities],
-            "components": [c.to_dict() for c in closure.components],
-            "decisions": [d.to_dict() for d in closure.decisions],
-            "constraints": [c.to_dict() for c in closure.constraints],
-            "policies": [p.to_dict() for p in closure.policies],
-            "qualities": [q.to_dict() for q in closure.qualities],
-            "markdown_prompt_context": closure.to_markdown_prompt_context(),
-        }
+    def get_closure(target_uri: str = Query(...)):
+        """Compute the full semantic closure for a code or data URI."""
+        closure = resolve_intent_closure(catalog.graph, target_uri)
+        return closure.to_dict()
+
 
     @app.post("/api/v1/validate")
     def validate_code(payload: ValidatePayload):
-        """Validate proposed code AST against active invariants."""
-        violations = catalog.validate_code(payload.target_symbol, payload.code_content, payload.metadata)
+        """Execute invariant engines against submitted code snippet."""
+        violations = catalog.invariant_engine.validate(
+            symbol_uri=payload.target_symbol,
+            code=payload.code_content,
+            metadata=payload.metadata or {},
+        )
         return {
+            "valid": len(violations) == 0,
             "target_symbol": payload.target_symbol,
-            "passed": len(violations) == 0,
-            "violation_count": len(violations),
-            "violations": [v.to_dict() for v in violations],
+            "violations": [
+                {
+                    "rule_name": v.rule_name,
+                    "description": v.description,
+                    "severity": v.severity.value,
+                    "line_number": v.line_number,
+                }
+                for v in violations
+            ],
         }
 
-    @app.get("/api/v1/solutions")
-    def get_solutions():
-        """Retrieve high-level solution stage visualizer metrics."""
-        components = catalog.graph.get_nodes_by_type(ComponentSpec)
-        capabilities = catalog.graph.get_nodes_by_type(CapabilitySpec)
-        decisions = catalog.graph.get_nodes_by_type(DecisionSpec)
-        invariants = catalog.graph.get_nodes_by_type(InvariantSpec)
+    @app.get("/api/v1/lineage/decisions/{uri:path}")
+    def get_decision_lineage_endpoint(uri: str):
+        return get_decision_lineage(catalog.graph, uri)
 
-        solutions: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
-            "components": [],
-            "capabilities": [],
-            "decisions": [],
-            "invariants": [],
-            "unimplemented_capabilities": [],
-        })
+    @app.get("/api/v1/lineage/impact/{uri:path}")
+    def get_impact_radius_endpoint(uri: str):
+        return get_impact_radius(catalog.graph, uri)
 
-        for comp in components:
-            sol_name = comp.domain or "general"
-            solutions[sol_name]["components"].append(comp.to_dict())
+    @app.get("/api/v1/lineage/components/{uri:path}")
+    def get_component_dependencies_endpoint(uri: str):
+        return get_component_dependencies(catalog.graph, uri)
 
-        for cap in capabilities:
-            sol_name = cap.component or "general"
-            solutions[sol_name]["capabilities"].append(cap.to_dict())
-            incoming = catalog.graph.get_incoming_edges(cap.uri, RelationalVerb.SATISFIES)
-            if not incoming:
-                solutions[sol_name]["unimplemented_capabilities"].append(cap.uri)
-
-        for dec in decisions:
-            # Domain from URI
-            domain = dec.uri.replace("decision://", "").split("/")[0]
-            solutions[domain]["decisions"].append(dec.to_dict())
-
-        for inv in invariants:
-            domain = inv.uri.replace("constraint://", "").split("/")[0]
-            solutions[domain]["invariants"].append(inv.to_dict())
-
-        # Determine stage for each solution
-        result = []
-        for sol_name, data in solutions.items():
-            total_caps = len(data["capabilities"])
-            unimplemented = len(data["unimplemented_capabilities"])
-            implemented = total_caps - unimplemented
-
-            if total_caps == 0:
-                stage = "1. INTENT ELICITATION"
-                progress = 15
-            elif implemented == 0:
-                stage = "2. DATA & ARCHITECTURE MODELING"
-                progress = 40
-            elif implemented < total_caps:
-                stage = "3. CODE IMPLEMENTATION"
-                progress = int(40 + (implemented / total_caps) * 45)
-            else:
-                stage = "4. INVARIANT CERTIFIED"
-                progress = 100
-
-            result.append({
-                "solution_name": sol_name,
-                "stage": stage,
-                "progress_percentage": progress,
-                "total_capabilities": total_caps,
-                "implemented_capabilities": implemented,
-                "unimplemented_capabilities": unimplemented,
-                "total_components": len(data["components"]),
-                "total_decisions": len(data["decisions"]),
-                "total_invariants": len(data["invariants"]),
-            })
-
-        return {"solutions": result}
-
-    @app.post("/api/v1/solutions/{solution_name}/project")
-    def project_solution_docs(solution_name: str, target_dir: Optional[str] = None):
-        """Project a solution's intent graph into a structured documentation suite on disk."""
-        target_path = Path(target_dir or (app.state.workspace_root / solution_name / "docs" / "requirements"))
-        generated = catalog.project_solution_docs(solution_name, target_path)
-        return {
-            "status": "projected",
-            "solution_name": solution_name,
-            "target_dir": str(target_path),
-            "file_count": len(generated),
-            "files": [str(p) for p in generated],
-        }
+    # =========================================================================
+    # LIGHT-THEMED WEB EXPLORER DASHBOARD
+    # =========================================================================
 
     @app.get("/", response_class=HTMLResponse)
     @app.get("/dashboard", response_class=HTMLResponse)
     def render_dashboard():
-        """Serve the Solution Control Plane Single-Page Web Dashboard."""
-        return DASHBOARD_HTML
-
-    return app
-
+        """Render the clean light-mode Northstar Intent Explorer."""
+        all_nodes = list(catalog.graph._nodes.values())
+        domains = sorted(list({n.domain for n in all_nodes}))
 
 
-DASHBOARD_HTML = """<!DOCTYPE html>
+        solution_bundles = {}
+        for d in domains:
+            d_nodes = [n for n in all_nodes if n.domain == d]
+            solution_bundles[d] = {
+                "solution_name": d,
+                "display_name": {
+                    "northstar": "🧭 Northstar Intent Authority",
+                    "groundtruth": "🏛️ GroundTruth Data Authority",
+                    "codemesh": "🕸️ CodeMesh Computation Authority",
+                    "ecommerce": "🛒 E-Commerce & Payments Domain",
+                    "arch": "📐 Federation Architectural Decisions",
+                }.get(d, f"📦 {d.capitalize()} Solution"),
+                "nodes": [n.to_dict() for n in d_nodes],
+                "capabilities": [n.to_dict() for n in d_nodes if isinstance(n, CapabilitySpec)],
+                "decisions": [n.to_dict() for n in d_nodes if isinstance(n, DecisionSpec)],
+                "components": [n.to_dict() for n in d_nodes if isinstance(n, ComponentSpec)],
+                "invariants": [n.to_dict() for n in d_nodes if isinstance(n, InvariantSpec)],
+            }
+
+        embedded_json = json.dumps(solution_bundles)
+
+        html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Northstar 🧭 Solution Control Plane</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Northstar | Intent & Requirements Authority</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.min.js"></script>
   <style>
-    :root {
-      --bg: #0d1117;
-      --card-bg: #161b22;
-      --border: #30363d;
-      --text: #c9d1d9;
-      --text-muted: #8b949e;
-      --text-bright: #f0f6fc;
-      --accent-cyan: #58a6ff;
-      --accent-green: #3fb950;
-      --accent-yellow: #d29922;
-      --accent-red: #f85149;
-      --accent-purple: #bc8cff;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background-color: var(--bg);
-      color: var(--text);
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      line-height: 1.5;
-      padding-bottom: 40px;
-    }
-    header {
-      background-color: var(--card-bg);
-      border-bottom: 1px solid var(--border);
-      padding: 16px 32px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--text-bright);
-    }
-    .badge {
-      font-size: 11px;
-      font-family: 'JetBrains Mono', monospace;
-      padding: 3px 8px;
-      border-radius: 12px;
-      background: rgba(88, 166, 255, 0.15);
-      color: var(--accent-cyan);
-      border: 1px solid rgba(88, 166, 255, 0.3);
-    }
-    .container {
-      max-width: 1300px;
-      margin: 32px auto;
-      padding: 0 24px;
-    }
-    .tabs {
-      display: flex;
-      gap: 12px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 24px;
-    }
-    .tab-btn {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 15px;
-      font-weight: 600;
-      padding: 12px 16px;
-      cursor: pointer;
-      position: relative;
-    }
-    .tab-btn.active {
-      color: var(--accent-cyan);
-    }
-    .tab-btn.active::after {
-      content: '';
-      position: absolute;
-      bottom: -1px;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: var(--accent-cyan);
-    }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-    
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-      gap: 20px;
-      margin-bottom: 32px;
-    }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 20px;
-    }
-    .card-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--text-bright);
-      margin-bottom: 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .progress-bar-bg {
-      background: rgba(255, 255, 255, 0.08);
-      height: 8px;
-      border-radius: 4px;
-      overflow: hidden;
-      margin: 12px 0;
-    }
-    .progress-fill {
-      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));
-      height: 100%;
-      transition: width 0.5s ease;
-    }
-    .metric-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 13px;
-      color: var(--text-muted);
-      margin-top: 6px;
-    }
-    .metric-val {
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 600;
-      color: var(--text-bright);
-    }
-    pre, code {
-      font-family: 'JetBrains Mono', monospace;
-      background: rgba(0,0,0,0.3);
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 13px;
-    }
-    .code-block {
-      background: #090d13;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 16px;
-      overflow-x: auto;
-      margin-top: 12px;
-    }
-    .btn {
-      background: var(--accent-cyan);
-      color: #000;
-      font-weight: 600;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .btn:hover { opacity: 0.9; }
-    .form-group {
-      margin-bottom: 14px;
-    }
-    label {
-      display: block;
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 6px;
-      color: var(--text-bright);
-    }
-    input, textarea, select {
-      width: 100%;
-      background: #090d13;
-      border: 1px solid var(--border);
-      color: var(--text-bright);
-      padding: 10px 12px;
-      border-radius: 6px;
-      font-family: inherit;
-      font-size: 14px;
-    }
-    input:focus, textarea:focus, select:focus {
-      outline: none;
-      border-color: var(--accent-cyan);
-    }
+    body {{ background-color: #f8fafc; color: #0f172a; }}
+    .tree-node-active {{ background-color: #eff6ff; color: #1d4ed8; font-weight: 600; border-left: 3px solid #3b82f6; }}
+    ::-webkit-scrollbar {{ width: 6px; height: 6px; }}
+    ::-webkit-scrollbar-track {{ background: #f1f5f9; }}
+    ::-webkit-scrollbar-thumb {{ background: #cbd5e1; border-radius: 3px; }}
   </style>
 </head>
-<body>
-  <header>
-    <div class="logo">
-      <span>🧭 Northstar Intent Authority</span>
-      <span class="badge">Tripartite Semantic Federation</span>
+<body class="bg-slate-50 text-slate-900 font-sans min-h-screen flex flex-col antialiased">
+
+  <!-- Light Theme Header -->
+  <header class="border-b border-slate-200 bg-white sticky top-0 z-50 px-6 py-3.5 flex items-center justify-between shadow-sm">
+    <div class="flex items-center space-x-4">
+      <div class="h-9 w-9 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white text-lg shadow-sm">NS</div>
+      <div>
+        <h1 class="text-base font-bold tracking-tight text-slate-900 flex items-center gap-2">
+          Northstar <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">Intent & Governance Authority</span>
+        </h1>
+        <p class="text-[11px] text-slate-500">Solution Control Plane • First-Principles Requirements • Decision Lineage • Executable Invariants</p>
+
+      </div>
     </div>
-    <div id="health-status">
-      <span class="badge" style="background: rgba(63,185,80,0.15); color: var(--accent-green); border-color: rgba(63,185,80,0.3);">
-        ● Engine Live (<span id="node-count">0</span> Nodes)
+
+    <!-- Tenant & Solution Selection Hierarchy -->
+    <div class="flex items-center space-x-3 text-xs">
+      <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 shadow-sm">
+        <span class="text-slate-500 font-medium">Tenant:</span>
+        <select class="bg-transparent text-slate-800 font-semibold focus:outline-none cursor-pointer">
+          <option value="tripartite" selected>🏢 Tripartite Enterprise</option>
+        </select>
+      </div>
+
+      <div class="flex items-center gap-2 bg-white border border-blue-300 rounded-lg px-3 py-1.5 shadow-sm">
+        <span class="text-blue-700 font-semibold">Active Solution:</span>
+        <select id="solutionSelect" onchange="onSolutionChange(this.value)" class="bg-slate-50 text-slate-900 font-bold rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer border border-slate-200">
+          <option value="northstar">🧭 Northstar Intent Authority</option>
+          <option value="groundtruth">🏛️ GroundTruth Data Authority</option>
+          <option value="codemesh">🕸️ CodeMesh Computation Authority</option>
+          <option value="ecommerce">🛒 E-Commerce & Payments Domain</option>
+          <option value="arch">📐 Architectural Decisions (ADRs)</option>
+        </select>
+      </div>
+
+      <span class="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-50 border border-blue-200 text-blue-800 font-medium shadow-sm">
+        <span class="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+        PostgreSQL: <strong>localhost:15432</strong>
       </span>
     </div>
   </header>
 
-  <div class="container">
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('solutions')">📊 Solutions & Stage Visualizer</button>
-      <button class="tab-btn" onclick="switchTab('elicitation')">✍️ Stakeholder Elicitation</button>
-      <button class="tab-btn" onclick="switchTab('graph')">🌐 Intent Knowledge Graph</button>
-      <button class="tab-btn" onclick="switchTab('closure')">🔍 Context Slicer & Invariant Gate</button>
-    </div>
-
-    <!-- TAB 1: SOLUTIONS & STAGE VISUALIZER -->
-    <div id="tab-solutions" class="tab-content active">
-      <h2 style="font-size: 20px; color: var(--text-bright); margin-bottom: 16px;">Active Solutions Lifecycle Control Plane</h2>
-      <div id="solutions-grid" class="grid">
-        <div class="card"><p style="color: var(--text-muted);">Loading active solutions...</p></div>
+  <!-- Workspace: Left Tree Sidebar + Right Main Viewport -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- LEFT SIDEBAR: Solution Tree Navigation -->
+    <aside class="w-72 border-r border-slate-200 bg-white flex flex-col overflow-y-auto p-4 space-y-4 shadow-sm">
+      <div class="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-500 px-2">
+        <span id="treeSolutionHeader">Solution Intent</span>
+        <span id="treeStatsBadge" class="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-mono">...</span>
       </div>
-    </div>
 
-    <!-- TAB 2: STAKEHOLDER ELICITATION -->
-    <div id="tab-elicitation" class="tab-content">
-      <div class="grid">
-        <div class="card" style="grid-column: span 2;">
-          <div class="card-title">
-            <span>✍️ Elicit Capability Operational Contract</span>
-            <span class="badge">req:// URI Generation</span>
-          </div>
-          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-            Capture formal operational contracts (preconditions, guarantees, failure modes) directly from human stakeholders.
-          </p>
-          <form id="elicit-form" onsubmit="submitCapability(event)">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-              <div class="form-group">
-                <label>Component / Bounded Context</label>
-                <input type="text" id="cap-component" placeholder="e.g. groundtruth/logical" required>
-              </div>
-              <div class="form-group">
-                <label>Capability Slug</label>
-                <input type="text" id="cap-slug" placeholder="e.g. verify-state-transition" required>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Human Purpose & Intent</label>
-              <textarea id="cap-intent" rows="2" placeholder="e.g. Verifies finite state machine transitions against legal entity state graphs." required></textarea>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-              <div class="form-group">
-                <label>Preconditions (Semicolon-separated)</label>
-                <input type="text" id="cap-pre" placeholder="e.g. Entity exists; Current state is valid">
-              </div>
-              <div class="form-group">
-                <label>Postconditions (Semicolon-separated)</label>
-                <input type="text" id="cap-post" placeholder="e.g. State advanced; Transition audit log persisted">
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Failure Modes (Error Name : Trigger Condition : Recovery Action)</label>
-              <input type="text" id="cap-failure" placeholder="e.g. IllegalTransitionError : State from_state -> to_state invalid : Reject and return 409">
-            </div>
-            <button type="submit" class="btn">Register Intent Capability</button>
-          </form>
-        </div>
-      </div>
-    </div>
+      <!-- Tree Nodes Container -->
+      <nav id="treeContainer" class="space-y-1 text-xs font-medium">
+        <!-- Dynamically rendered tree -->
+      </nav>
+    </aside>
 
-    <!-- TAB 3: GRAPH EXPLORER -->
-    <div id="tab-graph" class="tab-content">
-      <div class="card">
-        <div class="card-title">
-          <span>🌐 Raw Intent Multi-Graph Explorer</span>
-          <button class="btn" onclick="fetchGraph()">Refresh Graph</button>
-        </div>
-        <pre id="graph-json" class="code-block" style="max-height: 500px;"></pre>
-      </div>
-    </div>
-
-    <!-- TAB 4: CLOSURE & INVARIANT GATE -->
-    <div id="tab-closure" class="tab-content">
-      <div class="grid">
-        <div class="card">
-          <div class="card-title">🔍 Query 2-Hop Intent Closure</div>
-          <div class="form-group">
-            <label>Target Symbol CSI or Capability URI</label>
-            <input type="text" id="closure-target" placeholder="e.g. csi://northstar/api.NorthstarCatalog.get_governing_intent">
-          </div>
-          <button class="btn" onclick="queryClosure()">Slice Intent Context</button>
-          <pre id="closure-result" class="code-block" style="max-height: 350px; margin-top: 16px;"></pre>
-        </div>
-
-        <div class="card">
-          <div class="card-title">🛡️ Pre-Commit AST Invariant Gate</div>
-          <div class="form-group">
-            <label>Code Snippet to Test</label>
-            <textarea id="val-code" rows="6" placeholder="def my_function():\n    pass"></textarea>
-          </div>
-          <button class="btn" onclick="testInvariantGate()">Validate Invariants</button>
-          <pre id="val-result" class="code-block" style="max-height: 250px; margin-top: 16px;"></pre>
-        </div>
-      </div>
-    </div>
+    <!-- RIGHT MAIN VIEWPORT: Solution-Scoped Focus Content -->
+    <main id="mainViewport" class="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50">
+      <!-- Dynamically rendered detail view -->
+    </main>
   </div>
 
+  <script id="nsDataScript" type="application/json">
+{embedded_json}
+  </script>
+
   <script>
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      event.target.classList.add('active');
-      document.getElementById('tab-' + tabId).classList.add('active');
-      if (tabId === 'solutions') fetchSolutions();
-      if (tabId === 'graph') fetchGraph();
-    }
+    const NS_BUNDLES = JSON.parse(document.getElementById('nsDataScript').textContent);
+    let currentSolution = 'northstar';
+    let currentBundle = NS_BUNDLES[currentSolution] || NS_BUNDLES[Object.keys(NS_BUNDLES)[0]];
+    let activeNodeId = 'overview';
+    let renderCounter = 0;
 
-    async function fetchHealth() {
-      const res = await fetch('/health');
-      const data = await res.json();
-      document.getElementById('node-count').innerText = data.node_count;
-    }
+    try {{
+      if (window.mermaid) {{
+        mermaid.initialize({{
+          startOnLoad: false,
+          theme: 'neutral',
+          securityLevel: 'loose'
+        }});
+      }}
+    }} catch (e) {{
+      console.warn('Mermaid init warning:', e);
+    }}
 
-    async function fetchSolutions() {
-      const res = await fetch('/api/v1/solutions');
-      const data = await res.json();
-      const grid = document.getElementById('solutions-grid');
-      grid.innerHTML = '';
-      if (data.solutions.length === 0) {
-        grid.innerHTML = '<div class="card"><p style="color: var(--text-muted);">No solutions loaded yet. Use the Elicitation portal to add intent!</p></div>';
-        return;
-      }
-      data.solutions.forEach(s => {
-        grid.innerHTML += `
-          <div class="card">
-            <div class="card-title">
-              <span>📦 Solution: ${s.solution_name}</span>
-              <span class="badge">${s.stage}</span>
+    function onSolutionChange(solutionName) {{
+      activeNodeId = 'overview';
+      currentSolution = solutionName;
+      currentBundle = NS_BUNDLES[solutionName] || {{ solution_name: solutionName, nodes: [], capabilities: [], decisions: [], components: [], invariants: [] }};
+      document.getElementById('solutionSelect').value = solutionName;
+      renderTree();
+      selectView(activeNodeId);
+    }}
+
+    function renderTree() {{
+      if (!currentBundle) return;
+      document.getElementById('treeSolutionHeader').textContent = currentBundle.solution_name;
+      document.getElementById('treeStatsBadge').textContent = `${{currentBundle.nodes.length}} Nodes`;
+
+      const container = document.getElementById('treeContainer');
+      let html = '';
+
+      // 1. Solution Overview
+      html += `
+        <div onclick="selectView('overview')" class="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-100 ${{activeNodeId === 'overview' ? 'tree-node-active' : ''}}">
+          <span>📊</span> <span>Intent Overview & Stats</span>
+        </div>
+      `;
+
+      // 2. Decisions & ADRs
+      if (currentBundle.decisions && currentBundle.decisions.length > 0) {{
+        html += `
+          <div class="pt-2">
+            <div onclick="selectView('decisions_overview')" class="cursor-pointer flex items-center justify-between px-3 py-1.5 text-slate-600 hover:text-slate-900 font-semibold">
+              <span class="flex items-center gap-2"><span>📜</span> <span>Architectural Decisions</span></span>
+              <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">${{currentBundle.decisions.length}}</span>
             </div>
-            <div class="progress-bar-bg">
-              <div class="progress-fill" style="width: ${s.progress_percentage}%"></div>
+            <div class="pl-6 space-y-0.5 mt-1 border-l border-slate-200 ml-4">
+              ${{currentBundle.decisions.map(d => `
+                <div onclick="selectDecision('${{d.uri}}')" class="cursor-pointer px-2 py-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100 truncate ${{activeNodeId === 'dec_' + d.uri ? 'tree-node-active' : ''}}">
+                  ${{d.title || d.uri}}
+                </div>
+              `).join('')}}
             </div>
-            <div class="metric-row"><span>Maturity Progress:</span><span class="metric-val">${s.progress_percentage}%</span></div>
-            <div class="metric-row"><span>Total Capabilities:</span><span class="metric-val">${s.total_capabilities}</span></div>
-            <div class="metric-row"><span>Implemented / Unimplemented:</span><span class="metric-val">${s.implemented_capabilities} / ${s.unimplemented_capabilities}</span></div>
-            <div class="metric-row"><span>Architectural Decisions (ADRs):</span><span class="metric-val">${s.total_decisions}</span></div>
-            <div class="metric-row"><span>Active Invariant Guardrails:</span><span class="metric-val">${s.total_invariants}</span></div>
           </div>
         `;
-      });
-    }
+      }}
 
-    async function submitCapability(e) {
-      e.preventDefault();
-      const comp = document.getElementById('cap-component').value.trim();
-      const slug = document.getElementById('cap-slug').value.trim();
-      const intent = document.getElementById('cap-intent').value.trim();
-      const preRaw = document.getElementById('cap-pre').value.trim();
-      const postRaw = document.getElementById('cap-post').value.trim();
-      const failRaw = document.getElementById('cap-failure').value.trim();
+      // 3. Capabilities
+      if (currentBundle.capabilities && currentBundle.capabilities.length > 0) {{
+        html += `
+          <div class="pt-2">
+            <div onclick="selectView('capabilities_overview')" class="cursor-pointer flex items-center justify-between px-3 py-1.5 text-slate-600 hover:text-slate-900 font-semibold">
+              <span class="flex items-center gap-2"><span>⚡</span> <span>Functional Capabilities</span></span>
+              <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">${{currentBundle.capabilities.length}}</span>
+            </div>
+            <div class="pl-6 space-y-0.5 mt-1 border-l border-slate-200 ml-4">
+              ${{currentBundle.capabilities.map(c => `
+                <div onclick="selectCapability('${{c.uri}}')" class="cursor-pointer px-2 py-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100 truncate ${{activeNodeId === 'cap_' + c.uri ? 'tree-node-active' : ''}}">
+                  ${{c.title || c.name || c.uri}}
+                </div>
+              `).join('')}}
+            </div>
+          </div>
+        `;
+      }}
 
-      const pre = preRaw ? preRaw.split(';').map(d => ({ description: d.trim() })) : [];
-      const post = postRaw ? postRaw.split(';').map(d => ({ description: d.trim() })) : [];
-      const failures = [];
-      if (failRaw) {
-        const parts = failRaw.split(':').map(p => p.trim());
-        if (parts.length >= 3) {
-          failures.push({ error_name: parts[0], trigger_condition: parts[1], recovery_action: parts[2] });
-        }
-      }
+      // 4. Invariants
+      if (currentBundle.invariants && currentBundle.invariants.length > 0) {{
+        html += `
+          <div class="pt-2">
+            <div onclick="selectView('invariants_overview')" class="cursor-pointer flex items-center justify-between px-3 py-1.5 text-slate-600 hover:text-slate-900 font-semibold">
+              <span class="flex items-center gap-2"><span>🛡️</span> <span>Executable Invariants</span></span>
+              <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-mono">${{currentBundle.invariants.length}}</span>
+            </div>
+            <div class="pl-6 space-y-0.5 mt-1 border-l border-slate-200 ml-4">
+              ${{currentBundle.invariants.map(inv => `
+                <div onclick="selectInvariant('${{inv.uri}}')" class="cursor-pointer px-2 py-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100 truncate ${{activeNodeId === 'inv_' + inv.uri ? 'tree-node-active' : ''}}">
+                  ${{inv.title || inv.name || inv.uri}}
+                </div>
+              `).join('')}}
+            </div>
+          </div>
+        `;
+      }}
 
-      const uri = `req://${comp.replace('component://', '')}/${slug}`;
-      const payload = {
-        type: "CapabilitySpec",
-        data: {
-          uri: uri,
-          title: slug.replace(/-/g, ' ').toUpperCase(),
-          intent: intent,
-          component: comp,
-          contract: { preconditions: pre, postconditions: post, state_transitions: [] },
-          failure_modes: failures,
-        }
-      };
+      container.innerHTML = html;
+    }}
 
-      const res = await fetch('/api/v1/nodes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await res.json();
-      alert('✅ Registered Capability: ' + result.uri);
-      fetchHealth();
-      fetchSolutions();
-    }
+    function selectView(viewId) {{
+      activeNodeId = viewId;
+      renderTree();
+      const viewport = document.getElementById('mainViewport');
 
-    async function fetchGraph() {
-      const res = await fetch('/api/v1/graph');
-      const data = await res.json();
-      document.getElementById('graph-json').innerText = JSON.stringify(data, null, 2);
-    }
+      if (viewId === 'overview') {{
+        renderOverviewView(viewport);
+      }} else if (viewId === 'decisions_overview') {{
+        renderDecisionsOverview(viewport);
+      }} else if (viewId === 'capabilities_overview') {{
+        renderCapabilitiesOverview(viewport);
+      }} else if (viewId === 'invariants_overview') {{
+        renderInvariantsOverview(viewport);
+      }}
+    }}
 
-    async function queryClosure() {
-      const target = document.getElementById('closure-target').value.trim();
-      if (!target) return;
-      const res = await fetch('/api/v1/closure?target_uri=' + encodeURIComponent(target));
-      const data = await res.json();
-      document.getElementById('closure-result').innerText = data.markdown_prompt_context || JSON.stringify(data, null, 2);
-    }
+    function selectDecision(uri) {{
+      activeNodeId = 'dec_' + uri;
+      renderTree();
+      const decision = currentBundle.decisions.find(d => d.uri === uri);
+      if (!decision) return;
+      renderDecisionDetailView(decision);
+    }}
 
-    async function testInvariantGate() {
-      const code = document.getElementById('val-code').value;
-      const res = await fetch('/api/v1/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_symbol: "csi://test/Service.method", code_content: code })
-      });
-      const data = await res.json();
-      document.getElementById('val-result').innerText = JSON.stringify(data, null, 2);
-    }
+    function selectCapability(uri) {{
+      activeNodeId = 'cap_' + uri;
+      renderTree();
+      const cap = currentBundle.capabilities.find(c => c.uri === uri);
+      if (!cap) return;
+      renderCapabilityDetailView(cap);
+    }}
 
-    fetchHealth();
-    fetchSolutions();
+    function selectInvariant(uri) {{
+      activeNodeId = 'inv_' + uri;
+      renderTree();
+      const inv = currentBundle.invariants.find(i => i.uri === uri);
+      if (!inv) return;
+      renderInvariantDetailView(inv);
+    }}
+
+    function renderOverviewView(container) {{
+      container.innerHTML = `
+        <div class="space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div>
+              <h2 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+                📊 ${{currentBundle.display_name || currentBundle.solution_name}}
+              </h2>
+              <p class="text-xs text-slate-500 mt-1">Intent and governance specification for ${{currentBundle.solution_name}}</p>
+            </div>
+            <span class="text-xs px-3 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200 font-semibold shadow-sm">
+              ${{currentBundle.nodes.length}} Authority Nodes
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <div class="text-xs text-slate-500 font-medium uppercase">Capabilities</div>
+              <div class="text-2xl font-bold text-slate-900 mt-1">${{currentBundle.capabilities.length}}</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <div class="text-xs text-slate-500 font-medium uppercase">Decisions (ADRs)</div>
+              <div class="text-2xl font-bold text-blue-700 mt-1">${{currentBundle.decisions.length}}</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <div class="text-xs text-slate-500 font-medium uppercase">Invariants</div>
+              <div class="text-2xl font-bold text-emerald-700 mt-1">${{currentBundle.invariants.length}}</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <div class="text-xs text-slate-500 font-medium uppercase">Components</div>
+              <div class="text-2xl font-bold text-indigo-700 mt-1">${{currentBundle.components.length}}</div>
+            </div>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+            <h3 class="text-sm font-bold text-slate-900">Functional Capabilities & Intent</h3>
+            <div class="space-y-3">
+              ${{currentBundle.capabilities.map(c => `
+                <div onclick="selectCapability('${{c.uri}}')" class="cursor-pointer border border-slate-100 hover:border-blue-300 rounded-lg p-3 hover:bg-slate-50 transition">
+                  <div class="flex justify-between items-center">
+                    <span class="font-bold text-slate-900 text-xs">${{c.title || c.name}}</span>
+                    <span class="text-[10px] font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">${{c.uri}}</span>
+                  </div>
+                  <p class="text-xs text-slate-600 mt-1">${{c.intent || c.description || ''}}</p>
+                </div>
+              `).join('')}}
+            </div>
+          </div>
+        </div>
+      `;
+    }}
+
+    function renderDecisionDetailView(decision) {{
+      const container = document.getElementById('mainViewport');
+      container.innerHTML = `
+        <div class="space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div>
+              <div class="flex items-center gap-3">
+                <h2 class="text-2xl font-bold text-slate-900">${{decision.title || decision.uri}}</h2>
+                <span class="text-xs px-2.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-mono">${{decision.uri}}</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1.5">Architectural Decision Record</p>
+            </div>
+            <button onclick="selectView('overview')" class="text-xs bg-white hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 transition shadow-sm font-medium">
+              ← Back to Overview
+            </button>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold">Context & Problem</div>
+              <div class="text-xs text-slate-800 mt-1.5 bg-slate-50 p-4 rounded-lg border border-slate-200 whitespace-pre-line">${{decision.context_and_problem || 'No context provided.'}}</div>
+            </div>
+
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold">Decision Outcome & Rationale</div>
+              <div class="text-xs text-slate-800 mt-1.5 bg-slate-50 p-4 rounded-lg border border-slate-200 whitespace-pre-line">${{decision.decision_outcome || 'No outcome recorded.'}}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }}
+
+    function renderCapabilityDetailView(cap) {{
+      const container = document.getElementById('mainViewport');
+      container.innerHTML = `
+        <div class="space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div>
+              <div class="flex items-center gap-3">
+                <h2 class="text-2xl font-bold text-slate-900">${{cap.title || cap.name}}</h2>
+                <span class="text-xs px-2.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono">${{cap.uri}}</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1.5">Functional Capability Contract</p>
+            </div>
+            <button onclick="selectView('overview')" class="text-xs bg-white hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 transition shadow-sm font-medium">
+              ← Back to Overview
+            </button>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold">Business Intent</div>
+              <p class="text-xs text-slate-800 mt-1 bg-slate-50 p-4 rounded-lg border border-slate-200">${{cap.intent || cap.description || 'No intent provided.'}}</p>
+            </div>
+
+            ${{cap.contract ? `
+              <div>
+                <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold">Preconditions & Postconditions</div>
+                <div class="mt-2 space-y-2">
+                  ${{cap.contract.preconditions ? cap.contract.preconditions.map(p => `<div class="text-xs bg-amber-50 text-amber-900 p-2.5 rounded border border-amber-200"><strong>PRE:</strong> ${{p.description || p}}</div>`).join('') : ''}}
+                  ${{cap.contract.postconditions ? cap.contract.postconditions.map(p => `<div class="text-xs bg-emerald-50 text-emerald-900 p-2.5 rounded border border-emerald-200"><strong>POST:</strong> ${{p.description || p}}</div>`).join('') : ''}}
+                </div>
+              </div>
+            ` : ''}}
+          </div>
+        </div>
+      `;
+    }}
+
+    function renderInvariantDetailView(inv) {{
+      const container = document.getElementById('mainViewport');
+      container.innerHTML = `
+        <div class="space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div>
+              <div class="flex items-center gap-3">
+                <h2 class="text-2xl font-bold text-slate-900">${{inv.title || inv.name}}</h2>
+                <span class="text-xs px-2.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 font-mono">${{inv.uri}}</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-1.5">Executable Architectural Invariant</p>
+            </div>
+            <button onclick="selectView('overview')" class="text-xs bg-white hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 transition shadow-sm font-medium">
+              ← Back to Overview
+            </button>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+            <div>
+              <div class="text-xs uppercase tracking-wider text-slate-500 font-semibold">Invariant Policy Expression</div>
+              <pre class="text-xs font-mono text-emerald-800 mt-1 bg-slate-50 p-4 rounded-lg border border-slate-200">${{inv.expression || inv.evaluator_class || 'Declared Policy Invariant'}}</pre>
+            </div>
+          </div>
+        </div>
+      `;
+    }}
+
+    renderTree();
+    selectView('overview');
   </script>
 </body>
-</html>
-"""
+</html>"""
+        return HTMLResponse(content=html_content)
+
+    return app
+
 
 app = create_app()
-

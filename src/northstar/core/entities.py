@@ -359,7 +359,12 @@ class DecisionSpec:
         if not self.positive_consequences and self.consequences:
             object.__setattr__(self, "positive_consequences", self.consequences)
 
+    @property
+    def domain(self) -> str:
+        return parse_uri(self.uri).domain or "arch"
+
     def to_dict(self) -> Dict[str, Any]:
+
         data: Dict[str, Any] = {
             "uri": self.uri,
             "title": self.title,
@@ -422,10 +427,12 @@ class InvariantSpec:
         if not parsed.is_constraint:
             raise ValueError(f"Invariant URI must start with 'constraint://', got '{self.uri}'")
 
-        if self.type is not None:
-            object.__setattr__(self, "rule_type", self.type)
+    @property
+    def domain(self) -> str:
+        return parse_uri(self.uri).domain or "northstar"
 
     def to_dict(self) -> Dict[str, Any]:
+
         data: Dict[str, Any] = {
             "uri": self.uri,
             "title": self.title,
@@ -593,7 +600,22 @@ class IntentClosure:
         elif not self.requirements and self.capabilities:
             object.__setattr__(self, "requirements", self.capabilities)
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize IntentClosure to JSON-serializable dictionary."""
+        return {
+            "target_symbol": self.target_symbol,
+            "capabilities": [c.to_dict() for c in (self.capabilities or self.requirements)],
+            "components": [c.to_dict() for c in self.components],
+            "decisions": [d.to_dict() for d in self.decisions],
+            "constraints": [c.to_dict() for c in self.constraints],
+            "policies": [p.to_dict() for p in self.policies],
+            "qualities": [q.to_dict() for q in self.qualities],
+            "markdown_prompt_context": self.to_markdown_prompt_context(),
+
+        }
+
     def to_markdown_prompt_context(self) -> str:
+
         """Serialize as high-density Markdown for LLM prompt context injection."""
         lines = [f"### 🧭 Governing Intent & Constraints for `{self.target_symbol}`\n"]
         

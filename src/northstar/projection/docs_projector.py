@@ -425,3 +425,4 @@ class DocumentationProjector:
             )
 
         return "\n".join(lines) + "\n"
+
