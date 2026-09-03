@@ -166,7 +166,18 @@ class PostgresAdapter(IntentRepository):
                 )
                 conn.commit()
 
+    def delete_node(self, uri: str) -> bool:
+        """Delete a node and all its connected edges from PostgreSQL."""
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM northstar.edges WHERE source = %s OR target = %s", (uri, uri))
+                cur.execute("DELETE FROM northstar.nodes WHERE uri = %s", (uri,))
+                deleted = cur.rowcount > 0
+                conn.commit()
+                return deleted
+
     def save_edge(self, edge: RelationshipEdge) -> None:
+
         """Save or update a relational edge."""
         with self._get_connection() as conn:
             with conn.cursor() as cur:

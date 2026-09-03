@@ -439,6 +439,17 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Intent node '{uri}' not found")
         return {"uri": node.uri, "type": node.__class__.__name__, "data": node.to_dict()}
 
+    @app.get("/api/v1/decisions")
+    def list_decisions():
+        """Capability: List all architectural decisions across the federation sorted by ADR number."""
+        decisions = [
+            node.to_dict()
+            for node in catalog.graph._nodes.values()
+            if isinstance(node, DecisionSpec)
+        ]
+        return sorted(decisions, key=lambda d: (d.get("adr_number") or 9999, d.get("uri", "")))
+
+
 
     @app.post("/api/v1/nodes")
     def register_node(payload: NodePayload):
@@ -470,7 +481,20 @@ def create_app(workspace_root: Optional[str | Path] = None) -> FastAPI:
 
         return {"status": "created", "uri": node.uri}
 
+    @app.delete("/api/v1/nodes/{uri:path}")
+    def delete_node_endpoint(uri: str):
+        clean_uri = uri.strip()
+        # Handle cases where client omits scheme prefix or passes full URI
+        catalog.graph.remove_node(clean_uri)
+        if app.state.postgres:
+            try:
+                app.state.postgres.delete_node(clean_uri)
+            except Exception as e:
+                print(f"[Northstar] Postgres delete failed: {e}")
+        return {"status": "deleted", "uri": clean_uri}
+
     @app.post("/api/v1/links")
+
     def register_link(payload: LinkPayload):
         try:
             verb = RelationalVerb(payload.verb)

@@ -2,7 +2,9 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
+import re
 from typing import Any, Dict, List, Optional
+
 
 from northstar.core.contracts import (
     ActorGrant,
@@ -332,6 +334,7 @@ class DecisionSpec:
     """An Architectural Decision Record (MADR standard)."""
     uri: str
     title: str
+    adr_number: Optional[int] = None
     context_and_problem: str = ""
     decision_outcome: str = ""
     context: str = ""
@@ -352,6 +355,11 @@ class DecisionSpec:
         if not parsed.is_decision:
             raise ValueError(f"Decision URI must start with 'decision://', got '{self.uri}'")
 
+        if self.adr_number is None:
+            num_match = re.search(r"adr-?0*(\d+)", self.uri, re.IGNORECASE) or re.search(r"adr\s*0*(\d+)", self.title, re.IGNORECASE)
+            if num_match:
+                object.__setattr__(self, "adr_number", int(num_match.group(1)))
+
         if not self.context_and_problem and self.context:
             object.__setattr__(self, "context_and_problem", self.context)
         if not self.decision_outcome and self.decision:
@@ -363,11 +371,20 @@ class DecisionSpec:
     def domain(self) -> str:
         return parse_uri(self.uri).domain or "arch"
 
-    def to_dict(self) -> Dict[str, Any]:
+    @property
+    def formatted_id(self) -> str:
+        """Returns standard zero-padded identifier: e.g. 'ADR-0007'."""
+        if self.adr_number is not None:
+            return f"ADR-{self.adr_number:04d}"
+        return "ADR-UNKNOWN"
 
+    def to_dict(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {
             "uri": self.uri,
             "title": self.title,
+            "adr_number": self.adr_number,
+            "formatted_id": self.formatted_id,
+            "domain": self.domain,
             "context_and_problem": self.context_and_problem,
             "decision_outcome": self.decision_outcome,
             "positive_consequences": self.positive_consequences,
@@ -392,6 +409,7 @@ class DecisionSpec:
         return cls(
             uri=data["uri"],
             title=data.get("title", ""),
+            adr_number=data.get("adr_number"),
             context_and_problem=data.get("context_and_problem", data.get("context", "")),
             decision_outcome=data.get("decision_outcome", data.get("decision", "")),
             positive_consequences=data.get("positive_consequences", data.get("consequences", [])),
@@ -404,6 +422,7 @@ class DecisionSpec:
             provenance=ProvenanceMetadata.from_dict(data.get("provenance", {})),
             tags=data.get("tags", []),
         )
+
 
 
 @dataclass
