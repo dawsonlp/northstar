@@ -153,22 +153,24 @@ def resolve_solution_bundles(catalog: NorthstarCatalog) -> Dict[str, Dict[str, A
                 n for n in all_nodes
                 if isinstance(n, DecisionSpec) and (
                     n.domain == sol_key or
-                    any(governed in comp_uris or governed in cap_uris for governed in adr_to_governed_nodes.get(n.uri, set())) or
-                    (sol_key in ("groundtruth", "northstar", "codemesh") and any(k in n.uri for k in ("0001", "0002", "0003")))
+                    any(governed in comp_uris or governed in cap_uris for governed in adr_to_governed_nodes.get(n.uri, set()))
                 )
             ]
 
         # 4. Invariants / Constraints applying to this solution
-        invs = [
-            n for n in all_nodes
-            if isinstance(n, InvariantSpec) and (
-                n.domain == sol_key or
-                n.uri.startswith(f"constraint://{sol_key}/") or
-                sol_key in n.target_scope or
-                n.target_scope == "*" or
-                any(dec.uri == n.governing_adr for dec in decs)
-            )
-        ]
+        if sol_key == "arch":
+            invs = [n for n in all_nodes if isinstance(n, InvariantSpec)]
+        else:
+            invs = [
+                n for n in all_nodes
+                if isinstance(n, InvariantSpec) and (
+                    n.domain == sol_key or
+                    n.uri.startswith(f"constraint://{sol_key}/") or
+                    f"://{sol_key}/" in n.target_scope or
+                    any(comp.uri in n.target_scope for comp in comps)
+                )
+            ]
+
 
         # 5. Policies & Qualities
         pols = [n for n in all_nodes if isinstance(n, PolicySpec) and (n.domain == sol_key or sol_key == "arch")]
