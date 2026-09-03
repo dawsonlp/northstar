@@ -1,63 +1,67 @@
-# Northstar URI Addressing Grammar
+# Northstar Canonical URI Addressing Grammar (ADR 0004 Option B)
 
-This document provides the formal grammar, validation rules, and normalization algorithms for all **Northstar Canonical URIs**.
+This document provides the formal grammar, validation rules, and normalization algorithms for all **Northstar Option B Canonical URIs** and 5-tuple information coordinates.
 
 ---
 
 ## 1. Scheme Summary
 
-Northstar recognizes five distinct URI schemes representing orthogonal intent concepts:
+Northstar recognizes distinct URI schemes representing orthogonal intent and architectural concepts:
 
-| Scheme | Semantic Entity | Example URI |
+| Scheme | Semantic Entity | Example Option B URI |
 | :--- | :--- | :--- |
-| `req://` | Functional & Non-Functional Requirements | `req://payments/idempotent-charge-execution` |
-| `decision://` | Architectural Decision Records (ADRs) | `decision://payments/adr-004-stripe-idempotency-keys` |
-| `constraint://` | Invariants & Architectural Guardrails | `constraint://architecture/domain-service-isolation` |
-| `policy://` | Compliance, Security & Privacy Policies | `policy://compliance/pci-dss-card-data-isolation` |
-| `quality://` | Quality Attributes, SLAs & SLOs | `quality://checkout/p99-latency-under-200ms` |
+| `req://` | Functional & Operational Capability Specs | `req://tripartite:ecommerce/checkout-orchestrator@v1#preconditions` |
+| `component://` | Bounded Context Component Specs | `component://tripartite:northstar/intent-control-plane@v1` |
+| `decision://` | Architectural Decision Records (ADRs) | `decision://global:arch/adr-0004-canonical-uri-grammar-and-versioning-topology@v1` |
+| `constraint://` | Executable Invariants & Guardrails | `constraint://global:arch/canonical-uri-compliance@v1` |
+| `policy://` | Compliance, Security & Privacy Policies | `policy://global:compliance/pci-dss-card-data-isolation@v1` |
+| `quality://` | Quality Attributes, SLAs & SLOs | `quality://tripartite:checkout/p99-latency-under-200ms@v1` |
+| `workflow://` | Multi-Step Saga Workflows | `workflow://tripartite:ecommerce/checkout-saga@v1` |
 
 ---
 
-## 2. Formal EBNF Grammar
+## 2. Formal Option B EBNF Grammar
 
 ```ebnf
-NorthstarURI     ::= Scheme "://" Domain "/" Identifier ( "#" Fragment )?
+CanonicalURI     ::= Scheme "://" Authority "/" LocalPath ( "@" Version )? ( "#" Fragment )?
 
-Scheme           ::= "req" | "decision" | "constraint" | "policy" | "quality"
-Domain           ::= [a-z0-9_]+ ( "/" [a-z0-9_]+ )*
-Identifier       ::= [a-z0-9_-]+
-Fragment         ::= [a-zA-Z0-9_-]+
+Scheme           ::= "req" | "component" | "decision" | "constraint" | "policy" | "quality" | "workflow"
+Authority        ::= ( Tenant ":" )? Solution
+Tenant           ::= [a-z0-9_-]+
+Solution         ::= [a-z0-9_-]+
+LocalPath        ::= [a-z0-9_-]+ ( "/" [a-z0-9_-]+ )*
+Version          ::= "latest" | "v" [0-9]+ ( "." [0-9]+ ( "." [0-9]+ )? )? | [a-zA-Z0-9_.-]+
+Fragment         ::= [a-zA-Z0-9_.-]+
 ```
 
 ---
 
-## 3. Scheme-Specific Conventions
+## 3. Canonical 5-Tuple Coordinate Resolution
 
-### A. Requirement URIs (`req://`)
-* **Syntax**: `req://<domain>/<slug>`
-* **Rules**:
-  * `<domain>` is a hierarchical business domain (e.g. `billing`, `identity/auth`, `checkout`).
-  * `<slug>` is a kebab-case descriptor summarizing the user requirement.
-* **Examples**:
-  * `req://checkout/guest-checkout-support`
-  * `req://identity/auth/oidc-sso-login`
+Every URI in the Tripartite Federation resolves unambiguously to a discrete 5-tuple information coordinate:
 
-### B. Decision URIs (`decision://`)
-* **Syntax**: `decision://<domain>/<adr-number>-<slug>`
-* **Rules**:
-  * `<domain>` designates the architectural scope (e.g. `architecture`, `database`, `payments`).
-  * `<adr-number>` is formatted as `adr-###` (e.g., `adr-001`, `adr-042`).
-  * `<slug>` is the kebab-case title of the ADR.
-* **Examples**:
-  * `decision://architecture/adr-001-hexagonal-service-boundaries`
-  * `decision://payments/adr-004-stripe-idempotency-keys`
+$$\langle\text{Scheme}, \text{Tenant}, \text{Solution}, \text{Version}, \text{LocalPath}\rangle$$
 
-### C. Constraint URIs (`constraint://`)
-* **Syntax**: `constraint://<domain>/<slug>`
-* **Rules**:
-  * `<slug>` names the invariant rule or architectural guardrail.
-* **Examples**:
-  * `constraint://architecture/no-circular-domain-dependencies`
+### Resolution Rules:
+1. **Fully Qualified Form**: `req://tripartite:codemesh/list-package-symbols@v1`
+   - $\langle\text{req}, \text{tripartite}, \text{codemesh}, \text{v1}, \text{list-package-symbols}\rangle$
+2. **Contextual Shorthand Form**: `req://codemesh/list-package-symbols`
+   - When evaluated within tenant `tripartite`, expands to: `req://tripartite:codemesh/list-package-symbols@latest`
+3. **Global Architectural Decisions**: `decision://global:arch/adr-0004-canonical-uri-grammar-and-versioning-topology@v1`
+   - Shared across all tenants with `tenant: global`, `solution: arch`.
+
+---
+
+## 4. Live Resolution API Endpoint
+
+The running NorthStar service provides real-time URI validation and coordinate expansion at:
+
+```bash
+curl -s -X POST http://localhost:9480/api/v1/uris/resolve \
+  -H 'Content-Type: application/json' \
+  -d '{"uri": "req://tripartite:ecommerce/checkout-orchestrator@v1#preconditions"}'
+```
+
   * `constraint://security/mandatory-tenant-context-in-queries`
 
 ### D. Policy URIs (`policy://`)

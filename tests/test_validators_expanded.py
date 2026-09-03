@@ -8,9 +8,14 @@ from northstar.validators import (
     InvariantEngine,
     PurityValidator,
     StateTransitionMatrixValidator,
+    TenantIsolationValidator,
     TypeContractValidator,
+    ZeroDatabaseCredentialsValidator,
+    CanonicalURIComplianceValidator,
+    DeterministicDDLPurityValidator,
     ViolationSeverity,
 )
+
 
 
 def test_architectural_boundary_validator():
@@ -173,4 +178,64 @@ def test_invariant_engine_register_from_spec():
     violations = engine.validate_code("csi://payments/charge", bad_code)
     assert len(violations) == 1
     assert "missing mandatory '@idempotent' decorator" in violations[0].message
+
+
+def test_tenant_isolation_validator():
+    validator = TenantIsolationValidator()
+    bad_code = """
+def get_tenant_orders():
+    return []
+"""
+    violations = validator.validate("csi://ecommerce/OrderService.get_tenant_orders", bad_code)
+    assert len(violations) == 1
+    assert "missing a tenant context parameter" in violations[0].message
+
+    good_code = """
+def get_tenant_orders(tenant_slug: str):
+    return []
+"""
+    clean = validator.validate("csi://ecommerce/OrderService.get_tenant_orders", good_code)
+    assert len(clean) == 0
+
+
+def test_zero_db_credentials_validator():
+    validator = ZeroDatabaseCredentialsValidator()
+    bad_code = 'const dbUrl = "postgres://postgres:larnet_dev@localhost:15432/portal";'
+    violations = validator.validate("csi://portal/src/api/client.ts", bad_code)
+    assert len(violations) >= 1
+    assert "Direct database connection pattern or credential" in violations[0].message
+
+    good_code = 'const apiUrl = "http://localhost:9480/api/v1/tenants";'
+    clean = validator.validate("csi://portal/src/api/client.ts", good_code)
+    assert len(clean) == 0
+
+
+def test_canonical_uri_compliance_validator():
+    validator = CanonicalURIComplianceValidator()
+    violations = validator.validate("csi://any", "", metadata={"uri_to_validate": "invalid uri with spaces"})
+    assert len(violations) == 1
+    assert "violates Option B Canonical URI grammar" in violations[0].message
+
+    clean = validator.validate("csi://any", "", metadata={"uri_to_validate": "req://tripartite:ecommerce/checkout@v1"})
+    assert len(clean) == 0
+
+
+def test_deterministic_ddl_purity_validator():
+    validator = DeterministicDDLPurityValidator()
+    impure_code = """
+def generate_ddl():
+    with open("/tmp/schema.sql", "w") as f:
+        f.write("CREATE TABLE foo();")
+"""
+    violations = validator.validate("csi://groundtruth/physical/postgres.PostgresProjectionEngine", impure_code)
+    assert len(violations) == 1
+    assert "Impure call 'open()' detected" in violations[0].message
+
+    pure_code = """
+def generate_ddl():
+    return "CREATE TABLE foo (id UUID PRIMARY KEY);"
+"""
+    clean = validator.validate("csi://groundtruth/physical/postgres.PostgresProjectionEngine", pure_code)
+    assert len(clean) == 0
+
 

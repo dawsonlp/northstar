@@ -6,75 +6,83 @@
 
 ## 1. Mission & Domain Boundary
 
-**Northstar** captures human and organizational purpose. It bridges abstract business requirements, architectural decision records (ADRs), regulatory mandates, and engineering guardrails into structured, machine-navigable semantic entities.
+**Northstar** captures human and organizational purpose. It bridges formal capability contracts, architectural decision records (ADRs), regulatory mandates, and executable engineering guardrails into structured, machine-navigable semantic entities.
 
 ### Authority Separation:
-* **Northstar Owns**: Functional requirements, user stories, architectural decisions (ADRs), non-functional quality attributes (SLAs/SLOs), governance policies (security, compliance, privacy), and executable constraint definitions.
+* **Northstar Owns**: Functional capabilities (`CapabilitySpec`), bounded context components (`ComponentSpec`), architectural decisions (`DecisionSpec`), non-functional quality attributes (`QualitySpec`), governance policies (`PolicySpec`), workflows (`WorkflowSpec`), and executable invariants (`InvariantSpec`).
 * **CodeMesh Owns**: Computational implementation (classes, functions, methods, call graphs, ASTs, file materialization).
-* **GroundTruth Owns**: Conceptual, logical, and physical data structures and catalogs.
-* **Boundary Rule**: CodeMesh *satisfies* or *is governed by* intent, but CodeMesh never authors or modifies intent without explicit agent or human governance transactions.
+* **GroundTruth Owns**: Conceptual terms, logical entities, finite state machines, and physical DDL catalogs.
+* **Boundary Rule**: CodeMesh *satisfies* or *is governed by* intent, but CodeMesh never authors or modifies intent without explicit authority transactions.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        NORTHSTAR ONTOLOGY LAYER                        │
+│                        NORTHSTAR INTENT LAYER                          │
 ├────────────────────────────────────────────────────────────────────────┤
-│ 1. REQUIREMENTS: Business & User Goals                                 │
-│    req://checkout/zero-friction-checkout                               │
-│    req://payments/idempotent-charge-execution                          │
+│ 1. CAPABILITIES & COMPONENTS: First-Principles Operational Contracts   │
+│    component://tripartite:ecommerce/checkout-orchestrator@v1           │
+│    req://tripartite:ecommerce/process-checkout@v1                      │
 │                                  │                                     │
 │                                  ▼ (GOVERNED_BY / REFINED_BY)          │
 │ 2. DECISIONS (ADRs): Architectural Rationale & Trade-Offs              │
-│    decision://payments/adr-004-stripe-idempotency-keys                 │
-│    decision://storage/adr-012-postgres-jsonb-for-line-items            │
+│    decision://global:arch/adr-0005-hierarchical-multi-tenant-api@v1    │
+│    decision://tripartite:ecommerce/adr-001-idempotent-stripe-keys@v1   │
 │                                  │                                     │
 │                                  ▼ (ENFORCED_BY)                       │
-│ 3. CONSTRAINTS & POLICIES: Invariants & Executable Guardrails          │
-│    constraint://architecture/domain-service-isolation                  │
-│    policy://compliance/pci-dss-card-data-isolation                    │
-│    quality://checkout/p99-latency-under-200ms                          │
+│ 3. INVARIANTS & POLICIES: Guardrails & Executable Invariant Gates      │
+│    constraint://global:arch/tenant-information-boundary@v1            │
+│    policy://global:compliance/pci-dss-card-data-isolation@v1         │
+│    quality://tripartite:checkout/p99-latency-under-200ms@v1            │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Canonical Addressing & Identifier Specification
+## 2. Option B Canonical Addressing & Identifier Specification
 
-Northstar exposes deterministic, versioned URIs across five canonical entity types:
+Northstar exposes deterministic, versioned Option B URIs (`scheme://[tenant:][solution]/[path][@version]`):
 
-### A. Requirement URIs (`req://`)
-* **Format**: `req://<domain>/<id-or-slug>`
-* **Semantics**: Captures business capabilities, feature specifications, and user stories.
+### A. Capability URIs (`req://`)
+* **Format**: `req://[tenant:]<solution>/<capability-slug>[@version]`
+* **Semantics**: Captures atomic, state-transforming capability contracts with formal preconditions and postconditions.
 * **Examples**:
-  * `req://payments/idempotent-charge-execution`
-  * `req://auth/multi-factor-mandatory-for-admins`
+  * `req://tripartite:ecommerce/process-checkout@v1`
+  * `req://tripartite:northstar/scope-solution-intent-by-tenant@v1`
 
-### B. Architectural Decision URIs (`decision://`)
-* **Format**: `decision://<domain>/<adr-number>-<slug>`
-* **Semantics**: Captures context, decision rationale, trade-offs, and consequences (MADR / Nygard standard).
+### B. Component URIs (`component://`)
+* **Format**: `component://[tenant:]<solution>/<component-slug>[@version]`
+* **Semantics**: Bounded context encapsulating cohesion, owned entities, and exported capabilities.
 * **Examples**:
-  * `decision://payments/adr-004-stripe-idempotency-keys`
-  * `decision://messaging/adr-009-event-driven-order-fulfillment`
+  * `component://tripartite:ecommerce/checkout-orchestrator@v1`
+  * `component://tripartite:northstar/intent-control-plane@v1`
 
-### C. Constraint URIs (`constraint://`)
-* **Format**: `constraint://<domain>/<id-or-slug>`
+### C. Architectural Decision URIs (`decision://`)
+* **Format**: `decision://[tenant:]<solution>/adr-<number>-<slug>[@version]`
+* **Semantics**: Captures context, decision rationale, trade-offs, and consequences (MADR standard).
+* **Examples**:
+  * `decision://global:arch/adr-0005-hierarchical-multi-tenant-api-segmentation-and-global-inheritance@v1`
+  * `decision://tripartite:ecommerce/adr-0001-stripe-idempotency-keys@v1`
+
+### D. Invariant / Constraint URIs (`constraint://`)
+* **Format**: `constraint://[tenant:]<solution>/<slug>[@version]`
 * **Semantics**: Invariant conditions and guardrails limiting valid code structures or state transitions.
 * **Examples**:
-  * `constraint://architecture/domain-services-must-not-import-db-drivers`
-  * `constraint://orders/order-total-must-match-item-sum`
+  * `constraint://global:arch/tenant-information-boundary@v1`
+  * `constraint://global:arch/canonical-uri-compliance@v1`
 
-### D. Policy URIs (`policy://`)
-* **Format**: `policy://<domain>/<id-or-slug>`
+### E. Policy URIs (`policy://`)
+* **Format**: `policy://[tenant:]<solution>/<slug>[@version]`
 * **Semantics**: Regulatory, security, and organizational compliance mandates.
 * **Examples**:
-  * `policy://security/no-raw-sql-in-controllers`
-  * `policy://privacy/gdpr-right-to-erasure-compliance`
+  * `policy://global:compliance/pci-dss-card-data-isolation@v1`
+  * `policy://global:privacy/gdpr-right-to-erasure-compliance@v1`
 
-### E. Quality Attribute URIs (`quality://`)
-* **Format**: `quality://<domain>/<id-or-slug>`
+### F. Quality Attribute URIs (`quality://`)
+* **Format**: `quality://[tenant:]<solution>/<slug>[@version]`
 * **Semantics**: Non-functional requirements, service level agreements (SLAs), and SLOs.
 * **Examples**:
-  * `quality://checkout/p99-latency-under-200ms`
-  * `quality://availability/99-99-uptime-during-peak`
+  * `quality://tripartite:checkout/p99-latency-under-200ms@v1`
+  * `quality://tripartite:portal/sub-50ms-page-load@v1`
+
 
 ---
 

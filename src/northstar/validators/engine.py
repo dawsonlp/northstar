@@ -9,13 +9,17 @@ from typing import Any, Dict, List, Optional
 from northstar.core.entities import InvariantRuleType, InvariantSpec
 from northstar.validators.rules import (
     ArchitecturalBoundaryValidator,
+    CanonicalURIComplianceValidator,
     ConstraintValidator,
     ConstraintViolation,
     DecoratorInvariantValidator,
+    DeterministicDDLPurityValidator,
     PurityValidator,
     StateTransitionMatrixValidator,
+    TenantIsolationValidator,
     TypeContractValidator,
     ViolationSeverity,
+    ZeroDatabaseCredentialsValidator,
 )
 
 # Compatibility aliases
@@ -44,8 +48,8 @@ class InvariantEngine:
 
     def register_from_spec(self, spec: InvariantSpec) -> None:
         """Create and register a validator automatically from an InvariantSpec."""
-        if spec.rule_type == InvariantRuleType.DECORATOR_INVARIANT:
-            # Extract required decorator name from expression or title
+        uri_lower = spec.uri.lower()
+        if spec.rule_type == InvariantRuleType.DECORATOR_INVARIANT or "idempotent" in uri_lower:
             dec_name = spec.executable_expression or "idempotent"
             self.register_validator(
                 DecoratorInvariantValidator(
@@ -54,13 +58,11 @@ class InvariantEngine:
                     remediation_hint=spec.remediation_hint,
                 )
             )
-        elif spec.rule_type == InvariantRuleType.PURITY_BOUND:
-            self.register_validator(
-                PurityValidator(
-                    constraint_uri=spec.uri,
-                    remediation_hint=spec.remediation_hint,
-                )
-            )
+        elif spec.rule_type == InvariantRuleType.PURITY_BOUND or "ddl-purity" in uri_lower:
+            if "ddl" in uri_lower:
+                self.register_validator(DeterministicDDLPurityValidator(constraint_uri=spec.uri, remediation_hint=spec.remediation_hint))
+            else:
+                self.register_validator(PurityValidator(constraint_uri=spec.uri, remediation_hint=spec.remediation_hint))
         elif spec.rule_type == InvariantRuleType.TYPE_CONTRACT:
             self.register_validator(
                 TypeContractValidator(
@@ -68,6 +70,12 @@ class InvariantEngine:
                     remediation_hint=spec.remediation_hint,
                 )
             )
+        elif "tenant" in uri_lower:
+            self.register_validator(TenantIsolationValidator(constraint_uri=spec.uri, remediation_hint=spec.remediation_hint))
+        elif "zero-db" in uri_lower or "no-db" in uri_lower:
+            self.register_validator(ZeroDatabaseCredentialsValidator(constraint_uri=spec.uri, remediation_hint=spec.remediation_hint))
+        elif "canonical-uri" in uri_lower or "uri" in uri_lower:
+            self.register_validator(CanonicalURIComplianceValidator(constraint_uri=spec.uri, remediation_hint=spec.remediation_hint))
 
     def validate_code(
         self,
@@ -96,4 +104,9 @@ __all__ = [
     "PurityValidator",
     "StateTransitionMatrixValidator",
     "TypeContractValidator",
+    "TenantIsolationValidator",
+    "ZeroDatabaseCredentialsValidator",
+    "CanonicalURIComplianceValidator",
+    "DeterministicDDLPurityValidator",
 ]
+

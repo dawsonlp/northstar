@@ -17,9 +17,7 @@ COPY pyproject.toml README.md ./
 
 # Copy source code
 COPY src/ src/
-COPY intent/ intent/
-COPY adrs/ adrs/
-COPY .northstar/ .northstar/
+
 
 # Install python package and dependencies
 RUN uv pip install --system --no-cache .

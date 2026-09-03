@@ -6,7 +6,7 @@ This specification details the formal domain models, primitives, and typed struc
 
 ## 1. Ontological Foundations
 
-In conformance with [Tripartite ADR 0001](../../../adrs/0001-first-principles-information-dependencies-for-ontology-design.md) and [Northstar ADR 0003](../../adrs/0003-first-principles-capability-ontology.md), Northstar rejects administrative task hierarchies (Epics, Features, Stories, Points) in favor of **formal operational contracts and information dependencies**.
+In conformance with [Tripartite ADR 0001](../../../adrs/0001-first-principles-information-dependencies-for-ontology-design.md) and [Tripartite ADR 0004](../../../adrs/0004-canonical-uri-grammar-and-versioning-topology.md), Northstar rejects administrative task hierarchies (Epics, Features, Stories, Points) in favor of **formal operational contracts, information dependencies, and 5-tuple canonical coordinates**.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -39,17 +39,19 @@ In conformance with [Tripartite ADR 0001](../../../adrs/0001-first-principles-in
 
 ## 2. Core Entity Definitions
 
-### 2.1 `CapabilitySpec` (`req://<component>/<slug>`)
+### 2.1 `CapabilitySpec` (`req://[tenant:]<solution>/<slug>[@version]`)
 
 The fundamental unit of functional intent, representing an atomic, state-transforming capability.
 
 ```python
 @dataclass
 class CapabilitySpec:
-    uri: str                                      # req://<component>/<slug>
+    uri: str                                      # req://[tenant:]<solution>/<slug>[@version]
     title: str                                    # Human-readable title
     intent: str                                   # Business goal & plain-text summary
-    component: str                                # Owning component (Bounded Context)
+    domain: str                                   # Solution domain
+    component: Optional[str] = None               # Owning component (Bounded Context)
+
     
     # Information Dependencies (GroundTruth linkages)
     operated_entities: OperatedEntities = field(default_factory=OperatedEntities)

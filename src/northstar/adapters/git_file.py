@@ -37,11 +37,15 @@ class GitFileAdapter(IntentRepository):
         graph = IntentGraph()
 
         scan_dirs = [self.root_dir]
+        if not (self.root_dir / "intent").exists() and (self.root_dir.parent / "intent").exists():
+            scan_dirs.append(self.root_dir.parent)
+
         if self.root_dir.exists():
             for child in self.root_dir.iterdir():
                 if child.is_dir() and not child.name.startswith("."):
                     if (child / "intent").exists() or (child / "adrs").exists() or (child / ".northstar").exists():
                         scan_dirs.append(child)
+
 
         for sdir in scan_dirs:
             self._load_from_directory(sdir, graph)

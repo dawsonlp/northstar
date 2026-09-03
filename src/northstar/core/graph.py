@@ -54,8 +54,25 @@ class IntentGraph:
                 self._data_to_nodes[mutate_uri].add(node.uri)
 
     def get_node(self, uri: str) -> Optional[IntentNode]:
-        """Retrieve a node by its canonical URI."""
-        return self._nodes.get(uri)
+        """Retrieve a node by its canonical or scoped Option B URI."""
+        if uri in self._nodes:
+            return self._nodes[uri]
+        try:
+            parsed = parse_uri(uri)
+            canonical = parsed.to_canonical()
+            if canonical in self._nodes:
+                return self._nodes[canonical]
+            scoped = parsed.to_scoped()
+            if scoped in self._nodes:
+                return self._nodes[scoped]
+            # Match by identifier
+            for n_uri, node in self._nodes.items():
+                if n_uri.endswith(f"/{parsed.identifier}") or f"/{parsed.identifier}@" in n_uri:
+                    return node
+        except Exception:
+            pass
+        return None
+
 
     def has_node(self, uri: str) -> bool:
         return uri in self._nodes

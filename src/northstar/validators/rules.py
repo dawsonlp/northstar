@@ -349,3 +349,173 @@ class TypeContractValidator(ConstraintValidator):
                         )
         return violations
 
+
+class TenantIsolationValidator(ConstraintValidator):
+    """Enforces that multi-tenant API endpoints and repositories explicitly declare tenant context parameters."""
+
+    def __init__(
+        self,
+        constraint_uri: str = "constraint://arch/tenant-information-boundary",
+        remediation_hint: str = "Accept 'tenant_slug: str' or 'tenant_id: UUID' parameter in multi-tenant signature.",
+        governing_adr: Optional[str] = "decision://arch/adr-0005-hierarchical-multi-tenant-api-segmentation-and-global-inheritance",
+        severity: ViolationSeverity = ViolationSeverity.ERROR,
+    ):
+        self.constraint_uri = constraint_uri
+        self.remediation_hint = remediation_hint
+        self.governing_adr = governing_adr
+        self.severity = severity
+
+    def validate(
+        self,
+        target_symbol: str,
+        code_content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> List[ConstraintViolation]:
+        violations: List[ConstraintViolation] = []
+        try:
+            tree = ast.parse(code_content)
+        except SyntaxError:
+            return violations
+
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if "tenant" in node.name.lower() or (metadata and metadata.get("is_tenant_scoped")):
+                    arg_names = [a.arg for a in node.args.args]
+                    if not any("tenant" in a.lower() for a in arg_names):
+                        violations.append(
+                            ConstraintViolation(
+                                constraint_uri=self.constraint_uri,
+                                target_symbol=target_symbol,
+                                message=f"Tenant-scoped function '{node.name}' is missing a tenant context parameter.",
+                                line_number=node.lineno,
+                                remediation_hint=self.remediation_hint,
+                                governing_adr=self.governing_adr,
+                                severity=self.severity,
+                            )
+                        )
+        return violations
+
+
+class ZeroDatabaseCredentialsValidator(ConstraintValidator):
+    """Enforces that presentation layer and UI code never embed database connection strings or direct DB drivers."""
+
+    def __init__(
+        self,
+        constraint_uri: str = "constraint://portal/zero-db-credentials",
+        remediation_hint: str = "Route all data access through the GroundTruth and NorthStar REST APIs instead of direct DB access.",
+        governing_adr: Optional[str] = "decision://arch/adr-0002-three-tier-decomposition-data-domain-first-capability-api-and-zero-logic-presentation",
+        severity: ViolationSeverity = ViolationSeverity.ERROR,
+    ):
+        self.constraint_uri = constraint_uri
+        self.remediation_hint = remediation_hint
+        self.governing_adr = governing_adr
+        self.severity = severity
+
+    def validate(
+        self,
+        target_symbol: str,
+        code_content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> List[ConstraintViolation]:
+        violations: List[ConstraintViolation] = []
+        forbidden_tokens = ["postgres://", "postgresql://", "mysql://", "mongodb://", "psycopg", "larnet_dev"]
+        for idx, line in enumerate(code_content.splitlines(), start=1):
+            for token in forbidden_tokens:
+                if token in line:
+                    violations.append(
+                        ConstraintViolation(
+                            constraint_uri=self.constraint_uri,
+                            target_symbol=target_symbol,
+                            message=f"Direct database connection pattern or credential '{token}' detected in presentation code.",
+                            line_number=idx,
+                            remediation_hint=self.remediation_hint,
+                            governing_adr=self.governing_adr,
+                            severity=self.severity,
+                        )
+                    )
+        return violations
+
+
+class CanonicalURIComplianceValidator(ConstraintValidator):
+    """Enforces that URI strings declared or parsed adhere to Option B grammar."""
+
+    def __init__(
+        self,
+        constraint_uri: str = "constraint://arch/canonical-uri-compliance",
+        remediation_hint: str = "Format URIs as scheme://[tenant:][solution]/[path][@version][#fragment].",
+        governing_adr: Optional[str] = "decision://arch/adr-0004-canonical-uri-grammar-and-versioning-topology",
+        severity: ViolationSeverity = ViolationSeverity.ERROR,
+    ):
+        self.constraint_uri = constraint_uri
+        self.remediation_hint = remediation_hint
+        self.governing_adr = governing_adr
+        self.severity = severity
+        self.uri_pattern = re.compile(r'^(req|component|decision|constraint|policy|quality|workflow|data|csi)://([a-z0-9_-]+:)?([a-z0-9_-]+)/([a-zA-Z0-9_.-]+)(/[a-zA-Z0-9_.-]+)*(@[a-zA-Z0-9_.-]+)?(#[a-zA-Z0-9_.-]+)?$')
+
+    def validate(
+        self,
+        target_symbol: str,
+        code_content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> List[ConstraintViolation]:
+        violations: List[ConstraintViolation] = []
+        if metadata and "uri_to_validate" in metadata:
+            uri = metadata["uri_to_validate"]
+            if not self.uri_pattern.match(uri):
+                violations.append(
+                    ConstraintViolation(
+                        constraint_uri=self.constraint_uri,
+                        target_symbol=target_symbol,
+                        message=f"URI '{uri}' violates Option B Canonical URI grammar.",
+                        remediation_hint=self.remediation_hint,
+                        governing_adr=self.governing_adr,
+                        severity=self.severity,
+                    )
+                )
+        return violations
+
+
+class DeterministicDDLPurityValidator(ConstraintValidator):
+    """Enforces that physical DDL projection engines are pure string transformation functions free of IO."""
+
+    def __init__(
+        self,
+        constraint_uri: str = "constraint://groundtruth/deterministic-ddl-purity",
+        remediation_hint: str = "Ensure DDL generator only performs pure string formatting and returns deterministic SQL.",
+        governing_adr: Optional[str] = "decision://arch/adr-0002-three-tier-decomposition-data-domain-first-capability-api-and-zero-logic-presentation",
+        severity: ViolationSeverity = ViolationSeverity.ERROR,
+    ):
+        self.constraint_uri = constraint_uri
+        self.remediation_hint = remediation_hint
+        self.governing_adr = governing_adr
+        self.severity = severity
+
+    def validate(
+        self,
+        target_symbol: str,
+        code_content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> List[ConstraintViolation]:
+        violations: List[ConstraintViolation] = []
+        try:
+            tree = ast.parse(code_content)
+        except SyntaxError:
+            return violations
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id in ("open", "exec", "eval"):
+                    violations.append(
+                        ConstraintViolation(
+                            constraint_uri=self.constraint_uri,
+                            target_symbol=target_symbol,
+                            message=f"Impure call '{node.func.id}()' detected in DDL projection engine.",
+                            line_number=node.lineno,
+                            remediation_hint=self.remediation_hint,
+                            governing_adr=self.governing_adr,
+                            severity=self.severity,
+                        )
+                    )
+        return violations
+
+
