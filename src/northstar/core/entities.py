@@ -349,6 +349,7 @@ class DecisionSpec:
     status: LifecycleState = LifecycleState.ACTIVE
     provenance: ProvenanceMetadata = field(default_factory=ProvenanceMetadata)
     tags: List[str] = field(default_factory=list)
+    raw_markdown: str = ""
 
     def __post_init__(self):
         parsed = parse_uri(self.uri)
@@ -395,6 +396,7 @@ class DecisionSpec:
             "status": self.status.value if isinstance(self.status, LifecycleState) else self.status,
             "provenance": self.provenance.to_dict(),
             "tags": self.tags,
+            "raw_markdown": self.raw_markdown,
         }
         if self.superseded_by:
             data["superseded_by"] = self.superseded_by
@@ -421,7 +423,9 @@ class DecisionSpec:
             status=status,
             provenance=ProvenanceMetadata.from_dict(data.get("provenance", {})),
             tags=data.get("tags", []),
+            raw_markdown=data.get("raw_markdown", ""),
         )
+
 
 
 

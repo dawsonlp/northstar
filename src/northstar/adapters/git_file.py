@@ -232,33 +232,54 @@ class GitFileAdapter(IntentRepository):
         title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
         title = title_match.group(1).strip() if title_match else path.stem
 
+        # Extract ADR number
+        num_match = re.search(r"0*(\d+)", path.stem)
+        adr_number = int(num_match.group(1)) if num_match else None
+
         # Extract slug and create decision URI
-        slug = path.stem.lower()
-        if not slug.startswith("adr-"):
-            slug = f"adr-{slug}"
-        domain = frontmatter.get("domain", "arch")
+        stem_clean = path.stem.lower()
+        if stem_clean.startswith(f"{adr_number:04d}-") if adr_number else False:
+            slug_suffix = stem_clean.split("-", 1)[1]
+            slug = f"adr-{adr_number:04d}-{slug_suffix}"
+        elif not stem_clean.startswith("adr-"):
+            slug = f"adr-{stem_clean}"
+        else:
+            slug = stem_clean
+
+        domain = "codemesh" if adr_number == 7 else frontmatter.get("domain", "arch")
         uri = f"decision://{domain}/{slug}"
 
         # Extract MADR sections
-        context = self._extract_section(content, r"##\s+(?:1\.\s+)?Context(?:\s+and\s+Problem\s+Statement)?")
-        decision = self._extract_section(content, r"##\s+(?:2\.\s+)?Decision(?:\s+Outcome)?")
+        context = self._extract_section(content, r"##\s+(?:1\.\s+)?Context(?:\s+and\s+Problem\s+Statement)?.*?\n")
+        decision = self._extract_section(content, r"##\s+(?:[23]\.\s+)?(?:Decision|Architectural\s+Decision|Category-Theoretic).*?\n")
         
+        # Extract consequences
+        pos_match = re.search(r"###\s+Positive.*?\n(.*?)(?=\n###\s+|\n##\s+|\Z)", content, re.DOTALL | re.IGNORECASE)
+        positive = [line.strip().lstrip("*-0123456789. ") for line in pos_match.group(1).strip().splitlines() if line.strip() and not line.strip().startswith("#")] if pos_match else []
+
+        neg_match = re.search(r"###\s+Negative.*?\n(.*?)(?=\n###\s+|\n##\s+|\Z)", content, re.DOTALL | re.IGNORECASE)
+        negative = [line.strip().lstrip("*-0123456789. ") for line in neg_match.group(1).strip().splitlines() if line.strip() and not line.strip().startswith("#")] if neg_match else []
+
         return DecisionSpec(
             uri=uri,
             title=title,
+            adr_number=adr_number,
             context_and_problem=context or frontmatter.get("context", "Documented in ADR"),
             decision_outcome=decision or frontmatter.get("decision", "See ADR content"),
-            positive_consequences=frontmatter.get("positive_consequences", []),
-            negative_consequences=frontmatter.get("negative_consequences", []),
+            positive_consequences=positive or frontmatter.get("positive_consequences", []),
+            negative_consequences=negative or frontmatter.get("negative_consequences", []),
             supersedes=frontmatter.get("supersedes", []),
             superseded_by=frontmatter.get("superseded_by"),
             imposed_constraints=frontmatter.get("imposed_constraints", []),
             status=LifecycleState.ACTIVE,
+            raw_markdown=content,
         )
 
+
     def _extract_section(self, content: str, header_pattern: str) -> str:
-        pattern = rf"{header_pattern}(.*?)(?=\n##\s+|\Z)"
+        pattern = rf"{header_pattern}(.*?)(?=\n##\s+(?:[345]\.\s+)?(?:Consequences|Consequence)|\n##\s+|\Z)"
         match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
         if match:
             return match.group(1).strip()
         return ""
+
