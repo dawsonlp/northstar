@@ -1,6 +1,6 @@
 [project]
 name = "northstar-intent"
-version = "0.1.0"
+version = "0.3.0"
 description = "The Intent, Requirements, and Governance Authority for the Tripartite Semantic Federation"
 readme = "README.md"
 requires-python = ">=3.11"

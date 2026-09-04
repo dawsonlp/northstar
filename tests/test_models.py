@@ -1,12 +1,11 @@
 """Unit tests for Northstar domain models, provenance, and intent closures."""
 
 import pytest
+
 from northstar.core.models import (
     ConstraintNode,
     DecisionNode,
     IntentClosure,
-    PolicyNode,
-    QualityNode,
     RequirementNode,
 )
 from northstar.core.provenance import AuthorityTier, LifecycleState, ProvenanceMetadata
@@ -18,7 +17,9 @@ def test_requirement_model_validation():
         title="Capture Funds",
         domain="payments",
         status=LifecycleState.ACTIVE,
-        provenance=ProvenanceMetadata(tier=AuthorityTier.DECLARED, confidence=1.0, author="architect"),
+        provenance=ProvenanceMetadata(
+            tier=AuthorityTier.DECLARED, confidence=1.0, author="architect"
+        ),
     )
     assert req.uri == "req://payments/capture-funds"
     assert req.provenance.tier == AuthorityTier.DECLARED
@@ -29,6 +30,13 @@ def test_requirement_model_validation():
             title="Bad URI",
             domain="payments",
         )
+
+
+def test_missing_provenance_timestamp_is_stable_and_honest():
+    """Reloading legacy records must not invent a new semantic timestamp."""
+    provenance = ProvenanceMetadata.from_dict({})
+    assert provenance.created_at is None
+    assert provenance.to_dict()["created_at"] is None
 
 
 def test_decision_model_validation():
@@ -70,8 +78,9 @@ def test_intent_closure_markdown_generation():
         ],
     )
     md = closure.to_markdown_prompt_context()
-    assert "Governing Intent & Constraints for `csi://ecommerce/services/PaymentService.charge`" in md
+    assert (
+        "Governing Intent & Constraints for `csi://ecommerce/services/PaymentService.charge`" in md
+    )
     assert "Idempotent Payment Charge" in md
     assert "ADR 004: Stripe Keys" in md
     assert "Layer Isolation" in md
-

@@ -1,8 +1,9 @@
 """Domain models and backwards-compatible aliases for Northstar Intent Authority entities."""
 
+import hashlib
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict
+from typing import Any
 
 from northstar.core.contracts import (
     ActorGrant,
@@ -39,13 +40,13 @@ class RelationalVerb(str, Enum):
     OPERATES_ON = "OPERATES_ON"
     CONTAINS = "CONTAINS"
     REQUIRES = "REQUIRES"
-    
+
     # Governance & Architectural
     GOVERNED_BY = "GOVERNED_BY"
     CONSTRAINS = "CONSTRAINS"
     ENFORCES = "ENFORCES"
     VERIFIES = "VERIFIES"
-    
+
     # Evolution & Lineage
     SUPERSEDES = "SUPERSEDES"
     CONFLICTS_WITH = "CONFLICTS_WITH"
@@ -59,25 +60,31 @@ ConstraintType = InvariantRuleType
 @dataclass
 class RelationshipEdge:
     """A typed, provenance-tracked relational edge in the Intent Graph."""
+
     source: str
     verb: RelationalVerb
     target: str
     provenance: ProvenanceMetadata = field(default_factory=ProvenanceMetadata)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    edge_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.edge_id is None:
+            verb = self.verb.value if isinstance(self.verb, RelationalVerb) else str(self.verb)
+            identity = f"{self.source}\0{verb}\0{self.target}".encode()
+            self.edge_id = f"edge-sha256:{hashlib.sha256(identity).hexdigest()}"
 
     def __hash__(self) -> int:
-        verb_str = self.verb.value if isinstance(self.verb, RelationalVerb) else str(self.verb)
-        return hash((self.source, verb_str, self.target))
+        return hash(self.edge_id)
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, RelationshipEdge):
             return False
-        verb_self = self.verb.value if isinstance(self.verb, RelationalVerb) else str(self.verb)
-        verb_other = other.verb.value if isinstance(other.verb, RelationalVerb) else str(other.verb)
-        return self.source == other.source and verb_self == verb_other and self.target == other.target
+        return self.edge_id == other.edge_id
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
+            "edge_id": self.edge_id,
             "source": self.source,
             "verb": self.verb.value if isinstance(self.verb, RelationalVerb) else self.verb,
             "target": self.target,
@@ -86,7 +93,7 @@ class RelationshipEdge:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RelationshipEdge":
+    def from_dict(cls, data: dict[str, Any]) -> "RelationshipEdge":
         verb = data["verb"]
         if isinstance(verb, str):
             verb = RelationalVerb(verb)
@@ -96,6 +103,7 @@ class RelationshipEdge:
             target=data["target"],
             provenance=ProvenanceMetadata.from_dict(data.get("provenance", {})),
             metadata=data.get("metadata", {}),
+            edge_id=data.get("edge_id"),
         )
 
 
@@ -107,37 +115,37 @@ PolicyNode = PolicySpec
 QualityNode = QualitySpec
 
 __all__ = [
+    "ActorGrant",
     "CapabilitySpec",
-    "ComponentSpec",
     "ComponentDependency",
-    "WorkflowSpec",
-    "WorkflowStep",
-    "RetryPolicy",
+    "ComponentSpec",
+    "ConstraintNode",
+    "ConstraintType",
+    "DecisionNode",
     "DecisionSpec",
-    "InvariantSpec",
-    "PolicySpec",
-    "QualitySpec",
+    "FailureMode",
     "IntentClosure",
     "IntentNode",
-    "RelationshipEdge",
-    "RelationalVerb",
     "InvariantRuleType",
-    "StepExecutionMode",
-    "Precondition",
-    "Postcondition",
-    "StateTransition",
-    "OperationalContract",
-    "FailureMode",
-    "ActorGrant",
-    "OperatedEntities",
+    "InvariantSpec",
     "LifecycleState",
-    "ProvenanceMetadata",
     "NorthstarURI",
-    "parse_uri",
-    "RequirementNode",
-    "DecisionNode",
-    "ConstraintNode",
+    "OperatedEntities",
+    "OperationalContract",
     "PolicyNode",
+    "PolicySpec",
+    "Postcondition",
+    "Precondition",
+    "ProvenanceMetadata",
     "QualityNode",
-    "ConstraintType",
+    "QualitySpec",
+    "RelationalVerb",
+    "RelationshipEdge",
+    "RequirementNode",
+    "RetryPolicy",
+    "StateTransition",
+    "StepExecutionMode",
+    "WorkflowSpec",
+    "WorkflowStep",
+    "parse_uri",
 ]
